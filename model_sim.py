@@ -33,8 +33,8 @@ from scipy.stats import genextreme
 ##
 import os, ctypes
 
-# g++ -std=c++14 -shared -fPIC -o p_integrand.so p_integrand.cpp
-lib = ctypes.CDLL(os.path.abspath('./nonstat_model_noNugget/p_integrand.so'))
+# g++ -std=c++11 -shared -fPIC -o p_integrand.so p_integrand.cpp
+lib = ctypes.CDLL(os.path.abspath('./nonstat_noNugget/p_integrand.so'))
 i_and_o_type = np.ctypeslib.ndpointer(ndim=1, dtype=np.float64)
 grid_type  = np.ctypeslib.ndpointer(ndim=1, dtype=np.float64)
 bool_type  = np.ctypeslib.ndpointer(ndim=1, dtype='bool')
