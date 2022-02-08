@@ -148,7 +148,17 @@ if __name__ == "__main__":
        time_spent = time.time()-start_time
        print(str(time_spent)+'\n')
        print(str(Lik_recv)+'\n')
-       print(str(sum(time_spent))+'\n')
+       print(str(np.sum(time_spent))+'\n')
+       
+       
+   if rank==0: start_time=time.time()
+   Lik_tol = utils.marg_transform_data_mixture_likelihood(Y, X, Loc, Scale, 
+                                             Shape, phi_vec, np.repeat(gamma,n_s), R_s, 
+                                             V, d)
+   if rank==0: 
+       time_spent = time.time()-start_time
+       print(str(time_spent)+'\n')
+       print(str(Lik_tol)+'\n')
 
    # Initial trace objects
    # Z_1t_accept = np.zeros(n_s)
