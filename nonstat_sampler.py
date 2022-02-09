@@ -148,7 +148,7 @@ if __name__ == "__main__":
        time_spent = time.time()-start_time
        print(str(time_spent)+'\n')
        print(str(Lik_recv)+'\n')
-       print(str(np.sum(time_spent))+'\n')
+       print(str(np.sum(Lik_recv))+'\n')
        
        
    if rank==0: start_time=time.time()
