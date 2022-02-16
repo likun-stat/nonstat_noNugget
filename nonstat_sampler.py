@@ -150,6 +150,7 @@ if __name__ == "__main__":
    Current_Lik_recv = comm.gather(Current_lik,root=0)
    
    # Update phi_vec
+   print(rank,phi_vec[:9])
    if rank==0:
        print('Current_Lik_recv address:',Current_Lik_recv.data)
        start_time=time.time()
@@ -158,7 +159,7 @@ if __name__ == "__main__":
        phi_at_knots_proposal = phi_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
        phi_vec_star = phi_range_weights @ phi_at_knots_proposal
    
-   if np.any(phi_vec>=1) or np.any(phi_vec<=0): #U(0,1) priors
+   if np.any(phi_vec_star>=1) or np.any(phi_vec_star<=0): #U(0,1) priors
        Star_Lik_recv = np.repeat(-np.inf, n_phi_range_knots)
    else: 
        phi_vec_star = comm.bcast(phi_vec_star,root=0)
@@ -176,10 +177,10 @@ if __name__ == "__main__":
            r = 0
        if random_generator.uniform(0,1,1)<r:
            phi_vec[:] = phi_vec_star 
-           #need to broadcast phi_vec
+           phi_vec = comm.bcast(phi_vec,root=0)
            Current_Lik_recv[:] = Star_Lik_recv
            accept = 1
-           
+   print(rank,phi_vec[:9])     
    
    if rank==0: 
        time_spent = time.time()-start_time
