@@ -102,7 +102,19 @@ lib.print_Vec.argtypes = (i_and_o_type, ctypes.c_int, ctypes.c_int)
 def rlevy(n, m = 0, s = 1):
   if np.any(s < 0):
     sys.exit("s must be positive")
-  return s/norm.ppf(uniform.rvs(0,1,n)/2)**2 + m
+  return s/norm.ppf(1-uniform.rvs(0,1,n)/2)**2 + m
+
+def dlevy(r, m=0, s=1, log=False):
+    if np.any(s < 0):
+        sys.exit("s must be positive")
+    if np.any(r < m):
+        sys.exit("y must be greater than m")
+        
+    tmp = np.log(s/(2 * np.pi))/2 - 3 * np.log(r - m)/2 - s/(2 * (r - m))
+    if not log: 
+        tmp = np.exp(tmp)
+    return tmp
+    
 
 ## The density for R^phi in which R is levy distributed
 def dR_power_phi(x, phi, m=0, s=1, log=False):
@@ -535,7 +547,7 @@ def qRW_me_interp_py(p, xp, surv_p, tau_sqd, phi, gamma,
     
     # Obtain the quantile level using the interpolated function
     if not large_delta_large_x:
-        zeros = sum(cdf_vals==0)
+        zeros = np.sum(cdf_vals==0)
         try:
             tck = interp.pchip(cdf_vals[zeros:], x_vals[zeros:]) # 1-D monotonic cubic interpolation.
         except ValueError:
@@ -581,7 +593,7 @@ def qRW_interp(p, phi, gamma, cdf_vals = np.nan, x_vals = np.nan, n_x=400, lower
     
     # (3) Obtain the quantile level using the interpolated function
     if not large_delta_large_x:
-        zeros = sum(cdf_vals==0)
+        zeros = np.sum(cdf_vals==0)
         try:
             tck = interp.pchip(cdf_vals[zeros:], x_vals[zeros:]) # 1-D monotonic cubic interpolation.
         except ValueError:
@@ -629,7 +641,7 @@ def qRW_me_interp(p, xp, surv_p, tau_sqd, phi, gamma,
     
     # (3) Obtain the quantile level using the interpolated function
     if not large_delta_large_x:
-        zeros = sum(cdf_vals==0)
+        zeros = np.sum(cdf_vals==0)
         try:
             tck = interp.pchip(cdf_vals[zeros:], x_vals[zeros:]) # 1-D monotonic cubic interpolation.
         except ValueError:
@@ -846,7 +858,7 @@ def dRW_me_uni_interp(xval, xp, den_p, tau_sqd):
     integrand_p = np.exp(-tp**2/(2*tau_sqd)) * den_p
     denom = np.sqrt(2*np.pi*tau_sqd)
     
-    I_1 = sum(np.diff(tp)*(integrand_p[:-1] + integrand_p[1:])/2)  # 0.00036
+    I_1 = np.sum(np.diff(tp)*(integrand_p[:-1] + integrand_p[1:])/2)  # 0.00036
     tmp = I_1/denom
     return tmp
    
@@ -1024,7 +1036,7 @@ def inv_times_vector(A, x):
 ## log(|A|)
 ##
 def eig2logdet(d):
-  return sum(np.log(d))
+  return np.sum(np.log(d))
 
 
 ## Multivariate normal log density of R, where each column of 
@@ -1053,7 +1065,7 @@ def dmvn(R, Cor, mean=0, cholesky_inv = None):## cholesky_inv is the output of i
   else:
       sol = lapack.dpotrs(cholesky_inv[0],R-mean) #Solve Ax = b using factorization
       inv = (cholesky_inv[0],sol[0])
-  logdet = 2*sum(np.log(np.diag(inv[0])))
+  logdet = 2*np.sum(np.log(np.diag(inv[0])))
   res = -0.5*n_rep*logdet - 0.5 * np.sum((R-mean) * inv[1])
   return res
 
@@ -1323,9 +1335,9 @@ def marg_transform_data_mixture_likelihood_1t(Y, X, Loc, Scale, Shape, phi_vec, 
   part1 = -0.5*eig2inv_quadform_vector(V, 1/d, Z_vec)-0.5*np.sum(np.log(d)) # multivariate density
   
   ## Jacobian determinant
-  part21 = 0.5*sum(Z_vec**2) # 1/standard Normal densities of each Z_j
-  part22 = sum(phi_vec*np.log(R_vec) - 2*np.log(X)) # R_j^phi_j/X_j^2
-  part23 = sum(dgev(Y, Loc=Loc, Scale=Scale, Shape=Shape, log=True)-dRW_1t(X, phi_vec, gamma_vec, log =True))
+  part21 = 0.5*np.sum(Z_vec**2) # 1/standard Normal densities of each Z_j
+  part22 = np.sum(phi_vec*np.log(R_vec) - 2*np.log(X)) # R_j^phi_j/X_j^2
+  part23 = np.sum(dgev(Y, Loc=Loc, Scale=Scale, Shape=Shape, log=True)-dRW_1t(X, phi_vec, gamma_vec, log =True))
   
   return part1 + part21 + part22 + part23
 
@@ -1338,7 +1350,7 @@ def marg_transform_data_mixture_likelihood(Y, X, Loc, Scale, Shape, phi_vec, gam
   for idx in np.arange(n_t):
       ll[idx] = marg_transform_data_mixture_likelihood_1t(Y[:,idx], X[:,idx], Loc[:,idx], Scale[:,idx], 
                                                 Shape[:,idx], phi_vec, gamma_vec, R[:,idx], V, d)
-  return sum(ll)
+  return np.sum(ll)
 
 ##
 ## -------------------------------------------------------------------------- ##
@@ -1773,7 +1785,7 @@ def Z_likelihood_conditional_eigen(Z, V, d):
 
 def Z_likelihood_conditional(Z, Cor, cholesky_inv):
     # R_powered = R**phi
-    part1 = -0.5*inv_quadform_vector(Cor, Z, cholesky_inv)-0.5*2*sum(np.log(np.diag(cholesky_inv[0])))
+    part1 = -0.5*inv_quadform_vector(Cor, Z, cholesky_inv)-0.5*2*np.sum(np.log(np.diag(cholesky_inv[0])))
     return part1
 
 def Z_update_onetime(Y, X, R, Z, cen, cen_above, prob_below, prob_above,

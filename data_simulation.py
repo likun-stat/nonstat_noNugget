@@ -81,6 +81,7 @@ for idx in np.arange(n_s):
   range_vec[idx] = np.sum(weights*range_at_knots)
   num_knots[idx]=np.sum(weights>0)
 
+
 # import matplotlib.pyplot as plt
 # plt.scatter(Stations[:,0], Stations[:,1],c=range_vec, marker='o', alpha=0.5, cmap='jet')
 # plt.colorbar()
@@ -104,7 +105,7 @@ d = eig_Cor[0]
 
 
 # -------------- 4. Generate scaling factor -----------------
-# Range values at the knots
+# phi values at the knots
 phi_at_knots = 0.65-np.sqrt((Knots_data[:,0]-3)**2/4 + (Knots_data[:,1]-3)**2/3)/10
 # phi_vec = np.repeat(np.nan, n_s)
 # for idx in np.arange(n_s):
@@ -112,6 +113,7 @@ phi_at_knots = 0.65-np.sqrt((Knots_data[:,0]-3)**2/4 + (Knots_data[:,1]-3)**2/3)
 #   weights = utils.weights_fun(d_tmp,radius,bw, cutoff=False)
 #   phi_vec[idx] = np.sum(weights*phi_at_knots)
 
+n_phi_range_knots = len(phi_at_knots)
 phi_vec = phi_range_weights @ phi_at_knots
 
 # import matplotlib.pyplot as plt
@@ -123,6 +125,7 @@ R_at_knots = np.empty((Knots.shape[0],n_t))
 R_s = np.empty((n_s,n_t))
 R_s[:] = np.nan
 R_weights = np.empty((n_s,Knots.shape[0]))
+gamma_vec = np.repeat(np.nan, n_s)
 for idx in np.arange(n_t):
     S = utils.rlevy(Knots.shape[0],m=0,s=gamma)
     R_at_knots[:,idx] = S
@@ -130,8 +133,14 @@ for idx in np.arange(n_t):
         d_tmp = distance.cdist(Stations[idy,:].reshape((-1,2)),Knots)
         weights = utils.weights_fun(d_tmp,radius,bw)
         R_s[idy,idx] = np.sum(weights*S)
-        if idx ==1: R_weights[idy,:] = weights #only save once
+        if idx ==1: 
+            R_weights[idy,:] = weights
+            gamma_vec[idy] = np.sum(np.sqrt(weights[np.nonzero(weights)]*gamma))**2 #only save once
 
+## Same as the following for gamma_vec
+def gamma_func_apply(vec):
+    return np.sum(np.sqrt(vec[np.nonzero(vec)]))**2*gamma
+gamma_vec = np.apply_along_axis(gamma_func_apply, 1, R_weights)
 # plt.scatter(Stations[:,0], Stations[:,1],c=R_s[:,31], marker='o', alpha=0.5, cmap='jet')
 # plt.colorbar()
 # plt.title(r"$R(s)$");
@@ -236,6 +245,7 @@ data = {'Knots':Knots,
         'phi_vec':phi_vec,
         'phi_at_knots':phi_at_knots,
         'gamma':gamma,
+        'gamma_vec':gamma_vec,
         'range_vec':range_vec,
         'range_at_knots':range_at_knots,
         'nu':nu,
@@ -251,7 +261,7 @@ data = {'Knots':Knots,
         'beta_shape':beta_shape,
         }
 n_updates = 1001    
-sigma_m   = {'phi':2.4**2,
+sigma_m   = {'phi':np.sqrt(2.4**2/n_phi_range_knots),
              'theta_c':2.4**2/2,
              'range':2.4**2,
              'R_1t':2.4**2,
@@ -260,7 +270,8 @@ sigma_m   = {'phi':2.4**2,
              'beta_scale':2.4**2/n_covariates,
              'beta_shape':2.4**2/n_covariates,
              }
-prop_sigma   = {'theta_c':np.eye(2),
+prop_sigma   = {'phi':np.eye(n_phi_range_knots),
+                'theta_c':np.eye(2),
                 'beta_loc0':np.eye(n_covariates),
                 'beta_loc1':np.eye(n_covariates),
                 'beta_scale':np.eye(n_covariates),
@@ -853,3 +864,65 @@ Scale = np.tile(scale, n_t)
 Scale = Scale.reshape((n_s,n_t),order='F')
 Shape = np.tile(shape, n_t)
 Shape = Shape.reshape((n_s,n_t),order='F')
+
+
+
+## ----------------------------------------------------------------------------------------------
+## ----------------------- Theoretical distribution function verification -----------------------
+## ----------------------------------------------------------------------------------------------
+# Levy distribution
+samples = utils.rlevy(100000)
+x_vals = np.linspace(0.01,20,1000)
+d_vals = utils.dlevy(x_vals)
+censor = 2-2*norm.cdf(np.sqrt(1/(100)))
+d_vals = d_vals/censor
+import seaborn as sns
+plt.clf()
+sns.distplot(samples[samples<100], hist=True, kde=True, bins=1000)
+plt.plot(x_vals,d_vals)
+plt.xlim(0,20)
+
+# R = sum(weights*S)
+gamma=0.8
+weights = R_weights[1,:]
+n_knots = weights.shape[0]
+R_vec = np.empty(100000)
+for idx in np.arange(100000):
+    S = utils.rlevy(n_knots,m=0,s=gamma)
+    R_vec[idx] = np.sum(weights*S)
+
+gamma_new=np.sum(np.sqrt(weights[np.nonzero(weights)]))**2*gamma
+x_vals = np.linspace(0.01,40,1000)
+d_vals = utils.dlevy(x_vals, m=0, s=gamma_new)
+censor = 2-2*norm.cdf(np.sqrt(gamma_new/(200)))
+d_vals = d_vals/censor
+import seaborn as sns
+plt.clf()
+sns.distplot(R_vec[R_vec<200], hist=True, kde=True, bins=2000)
+plt.plot(x_vals,d_vals)
+plt.xlim(0,40)
+
+# R^phi
+phi=0.35
+R_phi = R_vec**phi
+for idx in np.arange(x_vals.shape[0]):
+    d_vals[idx] = utils.dR_power_phi(x_vals[idx], phi, m=0, s=gamma_new, log=False)
+censor = 2-2*norm.cdf(np.sqrt(gamma_new/(200**(1/phi))))
+d_vals = d_vals/censor
+import seaborn as sns
+plt.clf()
+sns.distplot(R_phi[R_phi<200], hist=True, kde=True, bins=2000)
+plt.plot(x_vals,d_vals)
+plt.xlim(0,40)
+
+# R^phi*W
+X = R_phi*(1/(1-norm.cdf(norm.rvs(size=100000))))
+x_vals = np.linspace(0.01,40,1000)
+d_vals = utils.dRW(x_vals, phi, gamma_new)
+censor = utils.pRW(200, phi, gamma_new)
+d_vals = d_vals/censor
+import seaborn as sns
+plt.clf()
+sns.distplot(X[X<200], hist=True, kde=True, bins=2000)
+plt.plot(x_vals,d_vals)
+plt.xlim(0,40)

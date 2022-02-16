@@ -43,7 +43,7 @@ def static_metr(z, starting_theta, likelihood_fn,
             prop_C = np.linalg.cholesky(prop_Sigma)
         except  np.linalg.LinAlgError:
             prop_Sigma = np.eye(p)
-            prop_C = np.eye=(p)
+            prop_C = np.eye(p)
             invalid = True
     if verbose and invalid:
         print("Invalid or missing proposal covariance matrix.  Using identity.\n")

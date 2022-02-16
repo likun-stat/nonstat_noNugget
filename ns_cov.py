@@ -115,7 +115,8 @@ def ns_cov(range_vec, sigsq_vec, coords, kappa = 0.5, cov_model = "matern"):
     dists2_sq = dists2**2
     dists12 = sgn_mat1*dists1*sgn_mat2*dists2
   
-    Dist_mat = np.sqrt(inv11*dists1_sq + 2*inv12*dists12 + inv22*dists2_sq)
+    Dist_mat_sqd = inv11*dists1_sq + 2*inv12*dists12 + inv22*dists2_sq
+    Dist_mat = np.sqrt(Dist_mat_sqd)
   
     # Combine
     Unscl_corr = cov_spatial(Dist_mat, cov_model = cov_model, cov_pars = np.array([1,1]), kappa = kappa)

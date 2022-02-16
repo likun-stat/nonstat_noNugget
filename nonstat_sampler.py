@@ -37,6 +37,7 @@ if __name__ == "__main__":
    from pickle import load
    from pickle import dump
    from scipy.linalg import lapack
+   from scipy.linalg import cholesky
    
    # Check whether the 'mpi4py' is installed
    test_mpi = os.system("python -c 'from mpi4py import *' &> /dev/null")
@@ -57,7 +58,7 @@ if __name__ == "__main__":
      Y = load(f)
      initial_values = load(f)
      sigma_m = load(f)
-     prop_sigma = load(f)
+     prop_Sigma = load(f)
      f.close()
      
    # Filename for storing the intermediate results
@@ -90,6 +91,7 @@ if __name__ == "__main__":
    phi_vec = initial_values['phi_vec']
    phi_at_knots = initial_values['phi_at_knots']
    gamma = initial_values['gamma']
+   gamma_vec = initial_values['gamma_vec']
    range_vec = initial_values['range_vec']
    range_at_knots = initial_values['range_at_knots']
    nu = initial_values['nu']
@@ -109,6 +111,7 @@ if __name__ == "__main__":
    # Bookkeeping
    n_s = Y.shape[0]
    n_t = Y.shape[1]
+   n_phi_range_knots = len(phi_at_knots)
    if n_t != size:
       import sys
       sys.exit("Make sure the number of cpus (N) = number of time replicates (n_t), i.e.\n     srun -N python nonstat_sampler.py")
@@ -139,21 +142,62 @@ if __name__ == "__main__":
    shape = Design_mat @beta_shape
    Shape = np.tile(shape, n_t)
    Shape = Shape.reshape((n_s,n_t),order='F')
-   if rank==0: start_time=time.time()
-   Lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
-                                             Shape[:,rank], phi_vec, np.repeat(gamma,n_s), R_s[:,rank], 
+   
+   
+   Current_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
+                                             Shape[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
                                              V, d)
-   Lik_recv = comm.gather(Lik,root=0)
+   Current_Lik_recv = comm.gather(Current_lik,root=0)
+   
+   # Update phi_vec
+   if rank==0:
+       print('Current_Lik_recv address:',Current_Lik_recv.data)
+       start_time=time.time()
+       tmp_upper = cholesky(prop_Sigma['phi'],lower=False)
+       tmp_params_star = sigma_m['phi']*random_generator.standard_normal(n_phi_range_knots)
+       phi_at_knots_proposal = phi_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
+       phi_vec_star = phi_range_weights @ phi_at_knots_proposal
+   
+   if np.any(phi_vec>=1) or np.any(phi_vec<=0): #U(0,1) priors
+       Star_Lik_recv = np.repeat(-np.inf, n_phi_range_knots)
+   else: 
+       phi_vec_star = comm.bcast(phi_vec_star,root=0)
+       Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
+                                             Shape[:,rank], phi_vec_star, gamma_vec, R_s[:,rank], 
+                                             V, d)
+   Star_Lik_recv = comm.gather(Star_lik,root=0)
+   
+   if rank==0:
+       print('Star_Lik_recv address:',Star_Lik_recv.data)
+       log_num = np.sum(Star_Lik_recv)
+       log_denom = np.sum(Current_Lik_recv)
+       r = np.exp(log_num - log_denom)
+       if ~np.isfinite(r):
+           r = 0
+       if random_generator.uniform(0,1,1)<r:
+           phi_vec[:] = phi_vec_star 
+           #need to broadcast phi_vec
+           Current_Lik_recv[:] = Star_Lik_recv
+           accept = 1
+           
+   
    if rank==0: 
        time_spent = time.time()-start_time
        print(str(time_spent)+'\n')
-       print(str(Lik_recv)+'\n')
-       print(str(np.sum(Lik_recv))+'\n')
+       start_time=time.time()
+   Lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
+                                             Shape[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
+                                             V, d)
+   
+   if rank==0: 
+       time_spent = time.time()-start_time
+       print(str(time_spent)+'\n')
+       
        
        
    if rank==0: start_time=time.time()
    Lik_tol = utils.marg_transform_data_mixture_likelihood(Y, X, Loc, Scale, 
-                                             Shape, phi_vec, np.repeat(gamma,n_s), R_s, 
+                                             Shape, phi_vec, gamma_vec, R_s, 
                                              V, d)
    if rank==0: 
        time_spent = time.time()-start_time
