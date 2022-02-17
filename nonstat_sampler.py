@@ -151,13 +151,14 @@ if __name__ == "__main__":
    
    # Update phi_vec
    print(rank,phi_vec[:9])
+   phi_vec_star = np.empty(n_s)
    if rank==0:
-       print('Current_Lik_recv address:',Current_Lik_recv.data)
+       print('Current_Lik_recv sum:',np.sum(Current_Lik_recv))
        start_time=time.time()
        tmp_upper = cholesky(prop_Sigma['phi'],lower=False)
        tmp_params_star = sigma_m['phi']*random_generator.standard_normal(n_phi_range_knots)
        phi_at_knots_proposal = phi_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
-       phi_vec_star = phi_range_weights @ phi_at_knots_proposal
+       phi_vec_star[:] = phi_range_weights @ phi_at_knots_proposal
        
    phi_vec_star = comm.bcast(phi_vec_star,root=0)
    if np.any(phi_vec_star>=1) or np.any(phi_vec_star<=0): #U(0,1) priors
@@ -169,7 +170,7 @@ if __name__ == "__main__":
    Star_Lik_recv = comm.gather(Star_lik,root=0)
    
    if rank==0:
-       print('Star_Lik_recv address:',Star_Lik_recv.data)
+       print('Star_Lik_recv sum:',np.sum(Star_Lik_recv))
        log_num = np.sum(Star_Lik_recv)
        log_denom = np.sum(Current_Lik_recv)
        r = np.exp(log_num - log_denom)
