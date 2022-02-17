@@ -158,11 +158,11 @@ if __name__ == "__main__":
        tmp_params_star = sigma_m['phi']*random_generator.standard_normal(n_phi_range_knots)
        phi_at_knots_proposal = phi_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
        phi_vec_star = phi_range_weights @ phi_at_knots_proposal
-   
+       
+   phi_vec_star = comm.bcast(phi_vec_star,root=0)
    if np.any(phi_vec_star>=1) or np.any(phi_vec_star<=0): #U(0,1) priors
-       Star_Lik_recv = np.repeat(-np.inf, n_phi_range_knots)
+       Star_Lik = -np.inf
    else: 
-       phi_vec_star = comm.bcast(phi_vec_star,root=0)
        Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
                                              Shape[:,rank], phi_vec_star, gamma_vec, R_s[:,rank], 
                                              V, d)
