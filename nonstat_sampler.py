@@ -122,12 +122,12 @@ if __name__ == "__main__":
    wh_to_plot_Xs = wh_to_plot_Xs.astype(int)
 
    # Eigendecomposition of the correlation matrix
-   tmp_vec = np.ones(n_s)
-   Cor = cov.ns_cov(range_vec, np.repeat(1, Stations.shape[0]), Stations, kappa = nu, cov_model = "matern")
+   one_vec = np.ones(n_s)
+   Cor = cov.ns_cov(range_vec, one_vec, Stations, kappa = nu, cov_model = "matern")
    eig_Cor = np.linalg.eigh(Cor) #For symmetric matrices
    V = eig_Cor[1]
    d = eig_Cor[0]
-   # cholesky_inv = lapack.dposv(Cor,tmp_vec)
+   # cholesky_inv = lapack.dposv(Cor,one_vec)
 
    # Marginal GEV parameters: per location x time
    loc0 = Design_mat @beta_loc0
@@ -149,26 +149,76 @@ if __name__ == "__main__":
                                              V, d)
    Current_Lik_recv = comm.gather(Current_lik,root=0)
    
-   # Update phi_vec
-   print(rank,phi_vec[:9])
+   
+   accept = 0
+   # --------- Update phi_vec -----------
+   #Propose new values
    phi_vec_star = np.empty(n_s)
    if rank==0:
-       print('Current_Lik_recv sum:',np.sum(Current_Lik_recv))
-       start_time=time.time()
        tmp_upper = cholesky(prop_Sigma['phi'],lower=False)
        tmp_params_star = sigma_m['phi']*random_generator.standard_normal(n_phi_range_knots)
        phi_at_knots_proposal = phi_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
-       phi_vec_star[:] = phi_range_weights @ phi_at_knots_proposal
-       
+       phi_vec_star[:] = phi_range_weights @ phi_at_knots_proposal    
    phi_vec_star = comm.bcast(phi_vec_star,root=0)
+   
+   # Evaluate likelihood at new values
    if np.any(phi_vec_star>=1) or np.any(phi_vec_star<=0): #U(0,1) priors
-       Star_Lik = -np.inf
+       Star_lik = -np.inf
    else: 
        Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
                                              Shape[:,rank], phi_vec_star, gamma_vec, R_s[:,rank], 
                                              V, d)
    Star_Lik_recv = comm.gather(Star_lik,root=0)
    
+   # Determine update or not
+   if rank==0:
+       log_num = np.sum(Star_Lik_recv)
+       log_denom = np.sum(Current_Lik_recv)
+       r = np.exp(log_num - log_denom)
+       if ~np.isfinite(r):
+           r = 0
+       if random_generator.uniform(0,1,1)<r:
+           phi_at_knots[:] = phi_at_knots_proposal
+           phi_vec[:] = phi_vec_star 
+           Current_Lik_recv[:] = Star_Lik_recv
+           accept = 1
+           
+   # Broadcast anyways
+   phi_vec = comm.bcast(phi_vec,root=0)
+    
+   
+   # --------- Update range_vec -----------
+   #Propose new values
+   print(rank,d[:9])
+   range_vec_star = np.empty(n_s)
+   V_star = np.empty(V.shape)
+   d_star = np.empty(d.shape)
+   if rank==0:
+       print('Current_Lik_recv sum:',np.sum(Current_Lik_recv))
+       start_time=time.time()
+       tmp_upper = cholesky(prop_Sigma['range'],lower=False)
+       tmp_params_star = sigma_m['range']*random_generator.standard_normal(n_phi_range_knots)
+       range_at_knots_proposal = range_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
+       range_vec_star[:] = phi_range_weights @ range_at_knots_proposal
+   range_vec_star = comm.bcast(range_vec_star,root=0)
+   
+   # Evaluate likelihood at new values
+   if np.all(range_vec_star>0):
+       # Not broadcasting but generating at each node
+       Cor_star = cov.ns_cov(range_vec_star, one_vec, Stations, kappa = nu, cov_model = "matern")
+       eig_Cor = np.linalg.eigh(Cor_star) #For symmetric matrices
+       V_star[:] = eig_Cor[1]
+       d_star[:] = eig_Cor[0]    
+       print(rank,d_star[:9],"star") 
+       Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
+                                             Shape[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
+                                             V_star, d_star)
+   else:
+       Star_lik = -np.inf
+   
+   Star_Lik_recv = comm.gather(Star_lik,root=0)
+   
+   # Determine update or not
    if rank==0:
        print('Star_Lik_recv sum:',np.sum(Star_Lik_recv))
        log_num = np.sum(Star_Lik_recv)
@@ -177,12 +227,19 @@ if __name__ == "__main__":
        if ~np.isfinite(r):
            r = 0
        if random_generator.uniform(0,1,1)<r:
-           phi_vec[:] = phi_vec_star 
-           phi_vec = comm.bcast(phi_vec,root=0)
+           range_at_knots[:] = range_at_knots_proposal
+           range_vec[:] = range_vec_star 
            Current_Lik_recv[:] = Star_Lik_recv
            accept = 1
-   print(rank,phi_vec[:9])     
+   print(rank,d[:9])     
    
+   # Broadcast anyways
+   accept = comm.bcast(accept,root=0)
+   print("accept = ",accept, rank)
+   if accept==1:
+       V[:] = V_star
+       d[:] = d_star
+       
    if rank==0: 
        time_spent = time.time()-start_time
        print(str(time_spent)+'\n')
@@ -205,8 +262,6 @@ if __name__ == "__main__":
        time_spent = time.time()-start_time
        print(str(time_spent)+'\n')
        print(str(Lik_tol)+'\n')
-
-   # Initial trace objects
    # Z_1t_accept = np.zeros(n_s)
    # R_accept = 0
    # Z_1t_trace = np.empty((n_s,n_updates_thinned)); Z_1t_trace[:] = np.nan
@@ -337,7 +392,7 @@ if __name__ == "__main__":
    #             # eig_Cor = np.linalg.eigh(Cor) #For symmetric matrices
    #             # V = eig_Cor[1]
    #             # d = eig_Cor[0]
-   #             cholesky_inv = lapack.dposv(Cor,tmp_vec)
+   #             cholesky_inv = lapack.dposv(Cor,one_vec)
            
    #         # Update beta_loc0
    #         Metr_beta_loc0 = sampler.static_metr(Design_mat, beta_loc0, utils.loc0_gev_update_mixture_me_likelihood, 

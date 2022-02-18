@@ -262,8 +262,8 @@ data = {'Knots':Knots,
         }
 n_updates = 1001    
 sigma_m   = {'phi':np.sqrt(2.4**2/n_phi_range_knots),
+             'range':np.sqrt(2.4**2/n_phi_range_knots),
              'theta_c':2.4**2/2,
-             'range':2.4**2,
              'R_1t':2.4**2,
              'beta_loc0':2.4**2/n_covariates,
              'beta_loc1':2.4**2/n_covariates,
@@ -271,6 +271,7 @@ sigma_m   = {'phi':np.sqrt(2.4**2/n_phi_range_knots),
              'beta_shape':2.4**2/n_covariates,
              }
 prop_sigma   = {'phi':np.eye(n_phi_range_knots),
+                'range':np.eye(n_phi_range_knots),
                 'theta_c':np.eye(2),
                 'beta_loc0':np.eye(n_covariates),
                 'beta_loc1':np.eye(n_covariates),
