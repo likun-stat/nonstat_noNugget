@@ -220,6 +220,9 @@ shape = Design_mat @beta_shape
 Shape = np.tile(shape, n_t)
 Shape = Shape.reshape((n_s,n_t),order='F')
 
+beta_gev_params = np.array([beta_loc0[0], beta_scale[0], beta_shape[0]])
+n_beta_gev_params = beta_gev_params.shape[0]
+   
 Y = np.empty((n_s,n_t))
 Y[:] = np.nan
 unifs = np.empty((n_s,n_t))
@@ -263,6 +266,7 @@ data = {'Knots':Knots,
 n_updates = 1001    
 sigma_m   = {'phi':np.sqrt(2.4**2/n_phi_range_knots),
              'range':np.sqrt(2.4**2/n_phi_range_knots),
+             'gev_params':np.sqrt(2.4**2/n_beta_gev_params),
              'theta_c':2.4**2/2,
              'R_1t':2.4**2,
              'beta_loc0':2.4**2/n_covariates,
@@ -272,6 +276,7 @@ sigma_m   = {'phi':np.sqrt(2.4**2/n_phi_range_knots),
              }
 prop_sigma   = {'phi':np.eye(n_phi_range_knots),
                 'range':np.eye(n_phi_range_knots),
+                'gev_params':np.eye(n_beta_gev_params),
                 'theta_c':np.eye(2),
                 'beta_loc0':np.eye(n_covariates),
                 'beta_loc1':np.eye(n_covariates),

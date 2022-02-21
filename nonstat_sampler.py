@@ -106,7 +106,8 @@ if __name__ == "__main__":
    beta_scale = initial_values['beta_scale']
    beta_shape = initial_values['beta_shape']
    
-  
+   beta_gev_params = np.array([beta_loc0[0], beta_scale[0], beta_shape[0]])
+   n_beta_gev_params = beta_gev_params.shape[0]
   
    # Bookkeeping
    n_s = Y.shape[0]
@@ -187,14 +188,13 @@ if __name__ == "__main__":
    phi_vec = comm.bcast(phi_vec,root=0)
     
    
+   accept = 0
    # --------- Update range_vec -----------
    #Propose new values
-   print(rank,d[:9])
    range_vec_star = np.empty(n_s)
    V_star = np.empty(V.shape)
    d_star = np.empty(d.shape)
    if rank==0:
-       print('Current_Lik_recv sum:',np.sum(Current_Lik_recv))
        start_time=time.time()
        tmp_upper = cholesky(prop_Sigma['range'],lower=False)
        tmp_params_star = sigma_m['range']*random_generator.standard_normal(n_phi_range_knots)
@@ -209,13 +209,67 @@ if __name__ == "__main__":
        eig_Cor = np.linalg.eigh(Cor_star) #For symmetric matrices
        V_star[:] = eig_Cor[1]
        d_star[:] = eig_Cor[0]    
-       print(rank,d_star[:9],"star") 
        Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
                                              Shape[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
                                              V_star, d_star)
    else:
        Star_lik = -np.inf
    
+   Star_Lik_recv = comm.gather(Star_lik,root=0)
+   
+   # Determine update or not
+   if rank==0:
+       log_num = np.sum(Star_Lik_recv)
+       log_denom = np.sum(Current_Lik_recv)
+       r = np.exp(log_num - log_denom)
+       if ~np.isfinite(r):
+           r = 0
+       if random_generator.uniform(0,1,1)<r:
+           range_at_knots[:] = range_at_knots_proposal
+           range_vec[:] = range_vec_star 
+           Current_Lik_recv[:] = Star_Lik_recv
+           accept = 1
+   
+   # Broadcast anyways
+   accept = comm.bcast(accept,root=0)
+   if accept==1:
+       V[:] = V_star
+       d[:] = d_star
+     
+       
+   accept = 0
+   # --------- Update GEV params -----------
+   #Propose new values
+   print(rank, beta_gev_params, loc0[0], loc1[0], scale[0], shape[0])
+   beta_gev_params_star = np.empty(beta_gev_params.shape)
+   loc0_star = np.empty(n_s)
+   scale_star = np.empty(n_s)
+   shape_star = np.empty(n_s)
+   if rank==0:
+       print('Current_Lik_recv sum:',np.sum(Current_Lik_recv))
+       start_time=time.time()
+       tmp_upper = cholesky(prop_Sigma['gev_params'],lower=False)
+       tmp_params_star = sigma_m['gev_params']*random_generator.standard_normal(n_beta_gev_params)
+       beta_gev_params_star[:] = beta_gev_params + np.matmul(tmp_upper.T , tmp_params_star)
+       
+   beta_gev_params_star = comm.bcast(beta_gev_params_star,root=0)
+   
+   # Evaluate likelihood at new values
+   # Not broadcasting but generating at each node
+   loc0_star[:] = Design_mat @np.array([beta_gev_params_star[0],0])
+   scale_star[:] = Design_mat @np.array([beta_gev_params_star[1],0])
+   shape_star[:] = Design_mat @np.array([beta_gev_params_star[2],0])
+   print(rank,beta_gev_params_star, loc0_star[0], loc1[0], scale_star[0], shape_star[0], "star")
+   Loc_star = np.tile(loc0_star, n_t) + np.tile(loc1, n_t)*np.repeat(Time,n_s)
+   Loc_star = Loc_star.reshape((n_s,n_t),order='F')
+   Scale_star = np.tile(scale_star, n_t)
+   Scale_star = Scale_star.reshape((n_s,n_t),order='F')
+   Shape_star = np.tile(shape_star, n_t)
+   Shape_star = Shape_star.reshape((n_s,n_t),order='F')
+   
+   Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc_star[:,rank], Scale_star[:,rank], 
+                                             Shape_star[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
+                                             V, d)
    Star_Lik_recv = comm.gather(Star_lik,root=0)
    
    # Determine update or not
@@ -227,41 +281,49 @@ if __name__ == "__main__":
        if ~np.isfinite(r):
            r = 0
        if random_generator.uniform(0,1,1)<r:
-           range_at_knots[:] = range_at_knots_proposal
+           beta_gev_params[:] = beta_gev_params_star
            range_vec[:] = range_vec_star 
            Current_Lik_recv[:] = Star_Lik_recv
-           accept = 1
-   print(rank,d[:9])     
+           accept = 1    
    
    # Broadcast anyways
    accept = comm.bcast(accept,root=0)
    print("accept = ",accept, rank)
    if accept==1:
-       V[:] = V_star
-       d[:] = d_star
+       loc0[:] = loc0_star
+       scale[:] = scale_star
+       shape[:] = shape_star
+       Loc[:] = Loc_star
+       Scale[:] = Scale_star
+       Shape[:] = Shape_star
+   print(rank,beta_gev_params, loc0[0], loc1[0], scale[0], shape[0])  
+       
        
    if rank==0: 
        time_spent = time.time()-start_time
        print(str(time_spent)+'\n')
        start_time=time.time()
-   Lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
-                                             Shape[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
-                                             V, d)
+   # Lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
+   #                                           Shape[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
+   #                                           V, d)
    
-   if rank==0: 
-       time_spent = time.time()-start_time
-       print(str(time_spent)+'\n')
+   # if rank==0: 
+   #     time_spent = time.time()-start_time
+   #     print(str(time_spent)+'\n')
        
        
        
-   if rank==0: start_time=time.time()
-   Lik_tol = utils.marg_transform_data_mixture_likelihood(Y, X, Loc, Scale, 
-                                             Shape, phi_vec, gamma_vec, R_s, 
-                                             V, d)
-   if rank==0: 
-       time_spent = time.time()-start_time
-       print(str(time_spent)+'\n')
-       print(str(Lik_tol)+'\n')
+   # if rank==0: start_time=time.time()
+   # Lik_tol = utils.marg_transform_data_mixture_likelihood(Y, X, Loc, Scale, 
+   #                                           Shape, phi_vec, gamma_vec, R_s, 
+   #                                           V, d)
+   # if rank==0: 
+   #     time_spent = time.time()-start_time
+   #     print(str(time_spent)+'\n')
+   #     print(str(Lik_tol)+'\n')
+   
+   
+   
    # Z_1t_accept = np.zeros(n_s)
    # R_accept = 0
    # Z_1t_trace = np.empty((n_s,n_updates_thinned)); Z_1t_trace[:] = np.nan
