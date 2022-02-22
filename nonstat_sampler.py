@@ -173,8 +173,12 @@ if __name__ == "__main__":
    
    # Evaluate likelihood at new values
    # Not broadcasting but evaluating at each node 
-   Star_Rt_prior = np.sum(utils.dlevy(Rt_at_knots_star, m=0, s=gamma, log=True))
-   Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
+   if np.any(Rt_at_knots_star<0):
+       Star_Rt_prior = -np.inf
+       Star_lik = -np.inf
+   else:    
+       Star_Rt_prior = np.sum(utils.dlevy(Rt_at_knots_star, m=0, s=gamma, log=True))
+       Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
                                              Shape[:,rank], phi_vec, gamma_vec, Rt_s_star, 
                                              V, d)
    

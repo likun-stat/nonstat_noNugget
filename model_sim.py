@@ -1974,7 +1974,7 @@ def Rt_update_mixture_me_likelihood(data, params, X, Z, cen, cen_above,
 ## -------------------------------------------------------------------------- ##
 ## -------------------------------------------------------------------------- ##
 ## When d > fit radius, the weight will be zero
-## h is tje bandwidth parameter
+## h is the bandwidth parameter
 ##
 
 def weights_fun(d,radius,h=1, cutoff=True):
