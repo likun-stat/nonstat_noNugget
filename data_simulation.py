@@ -122,6 +122,7 @@ phi_vec = phi_range_weights @ phi_at_knots
 # plt.title(r"$\phi(s)$");
 
 R_at_knots = np.empty((Knots.shape[0],n_t))
+n_Rt_knots = R_at_knots.shape[0]
 R_s = np.empty((n_s,n_t))
 R_s[:] = np.nan
 R_weights = np.empty((n_s,Knots.shape[0]))
@@ -264,7 +265,8 @@ data = {'Knots':Knots,
         'beta_shape':beta_shape,
         }
 n_updates = 1001    
-sigma_m   = {'phi':np.sqrt(2.4**2/n_phi_range_knots),
+sigma_m   = {'Rt':np.sqrt(2.4**2/n_Rt_knots),
+             'phi':np.sqrt(2.4**2/n_phi_range_knots),
              'range':np.sqrt(2.4**2/n_phi_range_knots),
              'gev_params':np.sqrt(2.4**2/n_beta_gev_params),
              'theta_c':2.4**2/2,
@@ -274,7 +276,8 @@ sigma_m   = {'phi':np.sqrt(2.4**2/n_phi_range_knots),
              'beta_scale':2.4**2/n_covariates,
              'beta_shape':2.4**2/n_covariates,
              }
-prop_sigma   = {'phi':np.eye(n_phi_range_knots),
+prop_sigma   = {'Rt':np.eye(n_Rt_knots),
+                'phi':np.eye(n_phi_range_knots),
                 'range':np.eye(n_phi_range_knots),
                 'gev_params':np.eye(n_beta_gev_params),
                 'theta_c':np.eye(2),

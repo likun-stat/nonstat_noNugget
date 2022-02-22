@@ -96,8 +96,8 @@ if __name__ == "__main__":
    range_at_knots = initial_values['range_at_knots']
    nu = initial_values['nu']
    X = initial_values['X']
-   R_at_knots = initial_values['R_at_knots']
-   R_s = initial_values['R_s']
+   R_at_knots = initial_values['R_at_knots']; Rt_at_knots = R_at_knots[:,rank]
+   R_s = initial_values['R_s']; Rt_s = R_s[:,rank]
    Z = initial_values['Z']
    Design_mat = initial_values['Design_mat']
    beta_loc0 = initial_values['beta_loc0']
@@ -113,6 +113,7 @@ if __name__ == "__main__":
    n_s = Y.shape[0]
    n_t = Y.shape[1]
    n_phi_range_knots = len(phi_at_knots)
+   n_Rt_knots = len(Rt_at_knots)
    if n_t != size:
       import sys
       sys.exit("Make sure the number of cpus (N) = number of time replicates (n_t), i.e.\n     srun -N python nonstat_sampler.py")
@@ -132,23 +133,77 @@ if __name__ == "__main__":
 
    # Marginal GEV parameters: per location x time
    loc0 = Design_mat @beta_loc0
+   loc0 = loc0.astype('float64')
    loc1 = Design_mat @beta_loc1
+   loc1 = loc1.astype('float64')
    Loc = np.tile(loc0, n_t) + np.tile(loc1, n_t)*np.repeat(Time,n_s)
    Loc = Loc.reshape((n_s,n_t),order='F')
 
    scale = Design_mat @beta_scale
+   scale = scale.astype('float64')
    Scale = np.tile(scale, n_t)
    Scale = Scale.reshape((n_s,n_t),order='F')
    
    shape = Design_mat @beta_shape
+   shape = shape.astype('float64')
    Shape = np.tile(shape, n_t)
    Shape = Shape.reshape((n_s,n_t),order='F')
    
-   
+   Current_Rt_prior = np.sum(utils.dlevy(Rt_at_knots, m=0, s=gamma, log=True))
    Current_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
                                              Shape[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
                                              V, d)
    Current_Lik_recv = comm.gather(Current_lik,root=0)
+   
+   
+   accept = 0
+   # --------- Update Rt -----------
+   #Propose new values
+   print(rank, Rt_at_knots)
+   Rt_s_star = np.empty(Rt_s.shape)
+   
+   #Propose Rt under every worker
+   print('Current_lik:',Current_lik, "- rank:", rank)
+   start_time=time.time()
+   tmp_upper = cholesky(prop_Sigma['Rt'],lower=False)
+   tmp_params_star = sigma_m['Rt']*random_generator.standard_normal(n_Rt_knots)
+   Rt_at_knots_star = Rt_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
+   Rt_s_star[:] = R_weights @ Rt_at_knots_star 
+   print(rank, Rt_at_knots_star)    
+   
+   # Evaluate likelihood at new values
+   # Not broadcasting but evaluating at each node 
+   Star_Rt_prior = np.sum(utils.dlevy(Rt_at_knots_star, m=0, s=gamma, log=True))
+   Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
+                                             Shape[:,rank], phi_vec, gamma_vec, Rt_s_star, 
+                                             V, d)
+   
+   # Determine update or not
+   # Not gathering but evaluating at each node 
+   print('Star_Lik:',Star_lik)
+   r = np.exp(Star_Rt_prior + Star_lik - Current_Rt_prior - Current_lik)
+   print('r=',r, "- rank:", rank)
+   if ~np.isfinite(r):
+       r = 0
+   if random_generator.uniform(0,1,1)<r:
+       Rt_at_knots[:] = Rt_at_knots_star
+       Rt_s[:] = Rt_s_star 
+       Current_lik[:] = Star_lik
+       accept = 1    
+   print('Current_lik:',Current_lik, "- rank:", rank, 'after')
+   
+   # Gather anyways
+   Current_Lik_recv = comm.gather(Current_lik,root=0)
+   R_s_recv = comm.gather(Rt_s,root=0)
+   R_s[:] = np.vstack(R_s_recv).T
+   
+   if rank==0: print(rank,np.sum(Current_Lik_recv))  
+       
+       
+   if rank==0: 
+       time_spent = time.time()-start_time
+       print(str(time_spent)+'\n')
+       start_time=time.time()
    
    
    accept = 0
@@ -242,9 +297,6 @@ if __name__ == "__main__":
    #Propose new values
    print(rank, beta_gev_params, loc0[0], loc1[0], scale[0], shape[0])
    beta_gev_params_star = np.empty(beta_gev_params.shape)
-   loc0_star = np.empty(n_s)
-   scale_star = np.empty(n_s)
-   shape_star = np.empty(n_s)
    if rank==0:
        print('Current_Lik_recv sum:',np.sum(Current_Lik_recv))
        start_time=time.time()
@@ -256,9 +308,9 @@ if __name__ == "__main__":
    
    # Evaluate likelihood at new values
    # Not broadcasting but generating at each node
-   loc0_star[:] = Design_mat @np.array([beta_gev_params_star[0],0])
-   scale_star[:] = Design_mat @np.array([beta_gev_params_star[1],0])
-   shape_star[:] = Design_mat @np.array([beta_gev_params_star[2],0])
+   loc0_star = Design_mat @np.array([beta_gev_params_star[0],0])
+   scale_star = Design_mat @np.array([beta_gev_params_star[1],0])
+   shape_star = Design_mat @np.array([beta_gev_params_star[2],0])
    print(rank,beta_gev_params_star, loc0_star[0], loc1[0], scale_star[0], shape_star[0], "star")
    Loc_star = np.tile(loc0_star, n_t) + np.tile(loc1, n_t)*np.repeat(Time,n_s)
    Loc_star = Loc_star.reshape((n_s,n_t),order='F')
@@ -296,13 +348,13 @@ if __name__ == "__main__":
        Loc[:] = Loc_star
        Scale[:] = Scale_star
        Shape[:] = Shape_star
-   print(rank,beta_gev_params, loc0[0], loc1[0], scale[0], shape[0])  
+   print(rank, loc0[0], loc1[0], scale[0], shape[0])  
        
        
-   if rank==0: 
-       time_spent = time.time()-start_time
-       print(str(time_spent)+'\n')
-       start_time=time.time()
+   # if rank==0: 
+   #     time_spent = time.time()-start_time
+   #     print(str(time_spent)+'\n')
+   #     start_time=time.time()
    # Lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
    #                                           Shape[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
    #                                           V, d)
