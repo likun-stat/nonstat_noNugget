@@ -1331,6 +1331,7 @@ def marg_transform_data_mixture_likelihood_1t(Y, X, Loc, Scale, Shape, phi_vec, 
   ll = np.empty(Y.shape)
   ll[:] = np.nan
   W_vec = X/R_vec**phi_vec
+  if np.any(W_vec < 1): return -np.inf
   Z_vec = pareto_to_Norm(W_vec)
   part1 = -0.5*eig2inv_quadform_vector(V, 1/d, Z_vec)-0.5*np.sum(np.log(d)) # multivariate density
   

@@ -199,7 +199,7 @@ if __name__ == "__main__":
    # Gather anyways
    Current_Lik_recv = comm.gather(Current_lik,root=0)
    R_s_recv = comm.gather(Rt_s,root=0)
-   R_s[:] = np.vstack(R_s_recv).T
+   if rank ==0: R_s[:] = np.vstack(R_s_recv).T
    
    if rank==0: print(rank,np.sum(Current_Lik_recv))  
        
