@@ -1323,7 +1323,8 @@ def marg_transform_data_mixture_me_likelihood_uni(Y, X, X_s, cen, cen_above,
 
 
 ## Without the nugget: one-time replicate
-def marg_transform_data_mixture_likelihood_1t(Y, X, Loc, Scale, Shape, phi_vec, gamma_vec, R_vec, V, d):
+## --- cholesky_U is the output of linalg.cholesky(lower=False)
+def marg_transform_data_mixture_likelihood_1t(Y, X, Loc, Scale, Shape, phi_vec, gamma_vec, R_vec, cholesky_U):
   if(isinstance(Y, (int, np.int64, float))): Y=np.array([Y], dtype='float64')
   
   
@@ -1333,7 +1334,9 @@ def marg_transform_data_mixture_likelihood_1t(Y, X, Loc, Scale, Shape, phi_vec, 
   W_vec = X/R_vec**phi_vec
   if np.any(W_vec < 1): return -np.inf
   Z_vec = pareto_to_Norm(W_vec)
-  part1 = -0.5*eig2inv_quadform_vector(V, 1/d, Z_vec)-0.5*np.sum(np.log(d)) # multivariate density
+  # part1 = -0.5*eig2inv_quadform_vector(V, 1/d, Z_vec)-0.5*np.sum(np.log(d)) # multivariate density
+  cholesky_inv = lapack.dpotrs(cholesky_U,Z_vec)
+  part1 = -0.5*np.sum(Z_vec*cholesky_inv[0])-np.sum(np.log(np.diag(cholesky_U))) # multivariate density
   
   ## Jacobian determinant
   part21 = 0.5*np.sum(Z_vec**2) # 1/standard Normal densities of each Z_j
@@ -1343,14 +1346,14 @@ def marg_transform_data_mixture_likelihood_1t(Y, X, Loc, Scale, Shape, phi_vec, 
   return part1 + part21 + part22 + part23
 
 ## Without the nugget: all time
-def marg_transform_data_mixture_likelihood(Y, X, Loc, Scale, Shape, phi_vec, gamma_vec, R, V, d):
+def marg_transform_data_mixture_likelihood(Y, X, Loc, Scale, Shape, phi_vec, gamma_vec, R, cholesky_U):
   ## Initialize space to store the log-likelihoods for each observation:
   n_t = Y.shape[1]
   ll = np.empty(n_t); ll[:] = np.nan
   
   for idx in np.arange(n_t):
       ll[idx] = marg_transform_data_mixture_likelihood_1t(Y[:,idx], X[:,idx], Loc[:,idx], Scale[:,idx], 
-                                                Shape[:,idx], phi_vec, gamma_vec, R[:,idx], V, d)
+                                                Shape[:,idx], phi_vec, gamma_vec, R[:,idx], cholesky_U)
   return np.sum(ll)
 
 ##
