@@ -155,21 +155,17 @@ if __name__ == "__main__":
                                              cholesky_U)
    Current_Lik_recv = comm.gather(Current_lik,root=0)
    
-   
+   start_time = time.time()
    accept = 0
    # --------- Update Rt -----------
    #Propose new values
-   if rank==20: print(rank, Rt_at_knots)
    Rt_s_star = np.empty(Rt_s.shape)
    
    #Propose Rt under every worker
-   if rank==20: print('Current_lik:',Current_lik, "- rank:", rank)
-   start_time=time.time()
    tmp_upper = cholesky(prop_Sigma['Rt'],lower=False)
    tmp_params_star = sigma_m['Rt']*random_generator.standard_normal(n_Rt_knots)
    Rt_at_knots_star = Rt_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
    Rt_s_star[:] = R_weights @ Rt_at_knots_star 
-   if rank==20: print(rank, Rt_at_knots_star)    
    
    # Evaluate likelihood at new values
    # Not broadcasting but evaluating at each node 
@@ -184,9 +180,7 @@ if __name__ == "__main__":
    
    # Determine update or not
    # Not gathering but evaluating at each node 
-   if rank==20: print('Star_Lik:',Star_lik)
    r = np.exp(Star_Rt_prior + Star_lik - Current_Rt_prior - Current_lik)
-   if rank==20: print('r=',r, "- rank:", rank)
    if ~np.isfinite(r):
        r = 0
    if random_generator.uniform(0,1,1)<r:
@@ -194,21 +188,14 @@ if __name__ == "__main__":
        Rt_s[:] = Rt_s_star 
        Current_lik = Star_lik
        accept = 1    
-   if rank==20: print('Current_lik:',Current_lik, "- rank:", rank, 'after')
    
    # Gather anyways
    Current_Lik_recv = comm.gather(Current_lik,root=0)
    R_s_recv = comm.gather(Rt_s,root=0)
    if rank ==0: R_s[:] = np.vstack(R_s_recv).T
    
-   if rank==0: print(rank,np.sum(Current_Lik_recv))  
        
-       
-   if rank==0: 
-       time_spent = time.time()-start_time
-       print(str(time_spent)+'\n')
-       start_time=time.time()
-   
+     
    
    accept = 0
    # --------- Update range_vec -----------
@@ -219,7 +206,6 @@ if __name__ == "__main__":
    cholesky_U_star = np.empty(cholesky_U.shape)
    
    if rank==0:
-       start_time=time.time()
        tmp_upper = cholesky(prop_Sigma['range'],lower=False)
        tmp_params_star = sigma_m['range']*random_generator.standard_normal(n_phi_range_knots)
        range_at_knots_proposal = range_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
@@ -307,8 +293,6 @@ if __name__ == "__main__":
    print(rank, beta_gev_params, loc0[0], loc1[0], scale[0], shape[0])
    beta_gev_params_star = np.empty(beta_gev_params.shape)
    if rank==0:
-       print('Current_Lik_recv sum:',np.sum(Current_Lik_recv))
-       start_time=time.time()
        tmp_upper = cholesky(prop_Sigma['gev_params'],lower=False)
        tmp_params_star = sigma_m['gev_params']*random_generator.standard_normal(n_beta_gev_params)
        beta_gev_params_star[:] = beta_gev_params + np.matmul(tmp_upper.T , tmp_params_star)
@@ -320,7 +304,6 @@ if __name__ == "__main__":
    loc0_star = Design_mat @np.array([beta_gev_params_star[0],0])
    scale_star = Design_mat @np.array([beta_gev_params_star[1],0])
    shape_star = Design_mat @np.array([beta_gev_params_star[2],0])
-   print(rank,beta_gev_params_star, loc0_star[0], loc1[0], scale_star[0], shape_star[0], "star")
    Loc_star = np.tile(loc0_star, n_t) + np.tile(loc1, n_t)*np.repeat(Time,n_s)
    Loc_star = Loc_star.reshape((n_s,n_t),order='F')
    Scale_star = np.tile(scale_star, n_t)
@@ -335,7 +318,6 @@ if __name__ == "__main__":
    
    # Determine update or not
    if rank==0:
-       print('Star_Lik_recv sum:',np.sum(Star_Lik_recv))
        log_num = np.sum(Star_Lik_recv)
        log_denom = np.sum(Current_Lik_recv)
        r = np.exp(log_num - log_denom)
@@ -349,7 +331,6 @@ if __name__ == "__main__":
    
    # Broadcast anyways
    accept = comm.bcast(accept,root=0)
-   print("accept = ",accept, rank)
    if accept==1:
        loc0[:] = loc0_star
        scale[:] = scale_star
@@ -357,7 +338,8 @@ if __name__ == "__main__":
        Loc[:] = Loc_star
        Scale[:] = Scale_star
        Shape[:] = Shape_star
-   print(rank, loc0[0], loc1[0], scale[0], shape[0])  
+   time_spent = time.time()-start_time
+   print(rank, time_spent)  
        
        
    # if rank==0: 
