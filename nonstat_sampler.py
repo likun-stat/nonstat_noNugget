@@ -159,17 +159,17 @@ if __name__ == "__main__":
    accept = 0
    # --------- Update Rt -----------
    #Propose new values
-   print(rank, Rt_at_knots)
+   if rank==20: print(rank, Rt_at_knots)
    Rt_s_star = np.empty(Rt_s.shape)
    
    #Propose Rt under every worker
-   print('Current_lik:',Current_lik, "- rank:", rank)
+   if rank==20: print('Current_lik:',Current_lik, "- rank:", rank)
    start_time=time.time()
    tmp_upper = cholesky(prop_Sigma['Rt'],lower=False)
    tmp_params_star = sigma_m['Rt']*random_generator.standard_normal(n_Rt_knots)
    Rt_at_knots_star = Rt_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
    Rt_s_star[:] = R_weights @ Rt_at_knots_star 
-   print(rank, Rt_at_knots_star)    
+   if rank==20: print(rank, Rt_at_knots_star)    
    
    # Evaluate likelihood at new values
    # Not broadcasting but evaluating at each node 
@@ -184,17 +184,17 @@ if __name__ == "__main__":
    
    # Determine update or not
    # Not gathering but evaluating at each node 
-   print('Star_Lik:',Star_lik)
+   if rank==20: print('Star_Lik:',Star_lik)
    r = np.exp(Star_Rt_prior + Star_lik - Current_Rt_prior - Current_lik)
-   print('r=',r, "- rank:", rank)
+   if rank==20: print('r=',r, "- rank:", rank)
    if ~np.isfinite(r):
        r = 0
    if random_generator.uniform(0,1,1)<r:
        Rt_at_knots[:] = Rt_at_knots_star
        Rt_s[:] = Rt_s_star 
-       Current_lik[:] = Star_lik
+       Current_lik = Star_lik
        accept = 1    
-   print('Current_lik:',Current_lik, "- rank:", rank, 'after')
+   if rank==20: print('Current_lik:',Current_lik, "- rank:", rank, 'after')
    
    # Gather anyways
    Current_Lik_recv = comm.gather(Current_lik,root=0)
