@@ -155,6 +155,7 @@ if __name__ == "__main__":
                                              cholesky_U)
    Current_Lik_recv = comm.gather(Current_lik,root=0)
    
+   
    start_time = time.time()
    accept = 0
    # --------- Update Rt -----------
@@ -187,6 +188,7 @@ if __name__ == "__main__":
        Rt_at_knots[:] = Rt_at_knots_star
        Rt_s[:] = Rt_s_star 
        Current_lik = Star_lik
+       Current_Rt_prior = Star_Rt_prior
        accept = 1    
    
    # Gather anyways
@@ -290,7 +292,6 @@ if __name__ == "__main__":
    accept = 0
    # --------- Update GEV params -----------
    #Propose new values
-   print(rank, beta_gev_params, loc0[0], loc1[0], scale[0], shape[0])
    beta_gev_params_star = np.empty(beta_gev_params.shape)
    if rank==0:
        tmp_upper = cholesky(prop_Sigma['gev_params'],lower=False)
@@ -338,6 +339,7 @@ if __name__ == "__main__":
        Loc[:] = Loc_star
        Scale[:] = Scale_star
        Shape[:] = Shape_star
+       Current_lik = Star_lik
    time_spent = time.time()-start_time
    print(rank, time_spent)  
        
