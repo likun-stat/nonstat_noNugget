@@ -164,7 +164,7 @@ if __name__ == "__main__":
        phi_knots_trace = np.empty((n_updates_thinned, n_phi_range_knots)); phi_knots_trace[:] = np.nan
        phi_knots_trace[0,:] = phi_at_knots
        beta_gev_params_trace = np.empty((n_updates_thinned, n_beta_gev_params)); beta_gev_params_trace[:] = np.nan
-       beta_gev_params_trace[0,:] = range_at_knots
+       beta_gev_params_trace[0,:] = beta_gev_params
    
    
    R_knots_within_thinning = np.empty((n_Rt_knots,thinning)); R_knots_within_thinning[:] = np.nan
@@ -188,7 +188,7 @@ if __name__ == "__main__":
    # -----------------------------------------------------------------------------------
    for iter in np.arange(1,n_updates):
        index_within = (iter-1)%thinning
-       start_time = time.time()
+       # start_time = time.time()
        
        # --------- Update Rt -----------
        #Propose new values
@@ -377,8 +377,8 @@ if __name__ == "__main__":
            Scale[:] = Scale_star
            Shape[:] = Shape_star
            Current_lik = Star_lik
-       time_spent = time.time()-start_time
-       print(rank, time_spent)  
+       # time_spent = time.time()-start_time
+       # print(rank, time_spent)  
    
        # ----------------------------------------------------------------------------------------
        # --------------------------- Summarize every 'thinning' steps ---------------------------
