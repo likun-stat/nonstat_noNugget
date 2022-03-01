@@ -256,7 +256,6 @@ data = {'Knots':Knots,
         'X':X,
         'R_at_knots':R_at_knots,
         'R_s':R_s,
-        'Z':Z,
         'Design_mat':Design_mat,
         'beta_loc0':beta_loc0,
         'beta_loc1':beta_loc1,
@@ -886,6 +885,7 @@ d_vals = utils.dlevy(x_vals)
 censor = 2-2*norm.cdf(np.sqrt(1/(100)))
 d_vals = d_vals/censor
 import seaborn as sns
+import matplotlib.pyplot as plt
 plt.clf()
 sns.distplot(samples[samples<100], hist=True, kde=True, bins=1000)
 plt.plot(x_vals,d_vals)
