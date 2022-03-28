@@ -22,11 +22,24 @@ gamma = 0.5
 # -------------- 2. Location matrix and nine knots -----------------
 np.random.seed(seed=1234)
 Stations = np.c_[uniform.rvs(0,10,n_s),uniform.rvs(0,10,n_s)]
-loc_tmp = np.linspace(0,10,num=7)[np.array([1,3,5])]
-x_tmp,y_tmp = np.meshgrid(loc_tmp, loc_tmp)
-Knots = np.c_[x_tmp.flatten(), y_tmp.flatten()]
+# loc_tmp = np.linspace(0,10,num=7)[np.array([1,3,5])]
+# x_tmp,y_tmp = np.meshgrid(loc_tmp, loc_tmp)
+# Knots_data = np.c_[x_tmp.flatten(), y_tmp.flatten()]
+xmin=0; xmax=10; ymin=0; ymax=10; Ngrid = 9
+x_vals = np.linspace(xmin + 1,  xmax + 1, num=np.int(2*np.sqrt(Ngrid)))
+y_vals = np.linspace(ymin + 1,  ymax + 1, num=np.int(2*np.sqrt(Ngrid)))
+part1_x, part1_y = np.meshgrid(x_vals[np.arange(0,len(x_vals)-1,2)],
+              y_vals[np.arange(0,len(x_vals)-1,2)])
+part2_x, part2_y = np.meshgrid(x_vals[np.arange(1,len(x_vals)-1,2)],
+              y_vals[np.arange(1,len(x_vals)-1,2)]) # The seq does not include the right end
+isometric_grid = np.r_[
+  np.c_[part1_x.flatten(), part1_y.flatten()],
+  np.c_[part2_x.flatten(), part2_y.flatten()]
+]
 
+Knots_data = isometric_grid
 radius = 3.5
+radius_from_knots = np.repeat(radius, Knots_data.shape[0])
 
 # import matplotlib.pyplot as plt
 # circle0 = plt.Circle((Knots[0,0],Knots[0,1]), radius, color='r', fill=False)
@@ -38,6 +51,10 @@ radius = 3.5
 # circle6 = plt.Circle((Knots[6,0],Knots[6,1]), radius, color='r', fill=False)
 # circle7 = plt.Circle((Knots[7,0],Knots[7,1]), radius, color='r', fill=False)
 # circle8 = plt.Circle((Knots[8,0],Knots[8,1]), radius, color='r', fill=False)
+# circle9 = plt.Circle((Knots[9,0],Knots[9,1]), radius, color='r', fill=False)
+# circle10 = plt.Circle((Knots[10,0],Knots[10,1]), radius, color='r', fill=False)
+# circle11 = plt.Circle((Knots[11,0],Knots[11,1]), radius, color='r', fill=False)
+# circle12 = plt.Circle((Knots[12,0],Knots[12,1]), radius, color='r', fill=False)
 
 # ax = plt.gca()
 # ax.cla() # clear things for fresh plot
@@ -54,6 +71,10 @@ radius = 3.5
 # ax.add_patch(circle6)
 # ax.add_patch(circle7)
 # ax.add_patch(circle8)
+# ax.add_patch(circle9)
+# ax.add_patch(circle10)
+# ax.add_patch(circle11)
+# ax.add_patch(circle12)
 
 # figure = plt.gcf()
 # figure.set_size_inches(4, 3.3)
@@ -61,8 +82,6 @@ radius = 3.5
 
 # -------------- 3. Generate covariance matrix -----------------
 from scipy.spatial import distance
-# Knots and Radius for the 'true' local values
-Knots_data = Knots
 
 
 # Range values at the knots
@@ -75,7 +94,7 @@ range_vec = np.repeat(np.nan, n_s)
 num_knots = np.repeat(np.nan, n_s)
 phi_range_weights = np.empty((n_s,Knots_data.shape[0]))
 for idx in np.arange(n_s):
-  d_tmp = distance.cdist(Stations[idx,:].reshape((-1,2)),Knots)
+  d_tmp = distance.cdist(Stations[idx,:].reshape((-1,2)),Knots_data)
   weights = utils.weights_fun(d_tmp,radius,bw,cutoff=False)
   phi_range_weights[idx,:] = weights
   range_vec[idx] = np.sum(weights*range_at_knots)
@@ -107,9 +126,11 @@ d = eig_Cor[0]
 # -------------- 4. Generate scaling factor -----------------
 # phi values at the knots
 phi_at_knots = 0.65-np.sqrt((Knots_data[:,0]-3)**2/4 + (Knots_data[:,1]-3)**2/3)/10
+# phi_at_knots = 0.65-np.sqrt((Knots_data[:,0]-5.1)**2/5 + (Knots_data[:,1]-5.3)**2/4)/11.6
+# phi_at_knots = np.array([0.6094903, 0.4054797, 0.3700976, 0.4705422, 0.4340951, 0.4411079, 0.3704561, 0.5124574, 0.5600023])
 # phi_vec = np.repeat(np.nan, n_s)
 # for idx in np.arange(n_s):
-#   d_tmp = distance.cdist(Stations[idx,:].reshape((-1,2)),Knots)
+#   d_tmp = distance.cdist(Stations[idx,:].reshape((-1,2)),Knots_data)
 #   weights = utils.weights_fun(d_tmp,radius,bw, cutoff=False)
 #   phi_vec[idx] = np.sum(weights*phi_at_knots)
 
@@ -121,18 +142,18 @@ phi_vec = phi_range_weights @ phi_at_knots
 # plt.colorbar()
 # plt.title(r"$\phi(s)$");
 
-R_at_knots = np.empty((Knots.shape[0],n_t))
+R_at_knots = np.empty((Knots_data.shape[0],n_t))
 n_Rt_knots = R_at_knots.shape[0]
 R_s = np.empty((n_s,n_t))
 R_s[:] = np.nan
-R_weights = np.empty((n_s,Knots.shape[0]))
+R_weights = np.empty((n_s,Knots_data.shape[0]))
 gamma_vec = np.repeat(np.nan, n_s)
 for idx in np.arange(n_t):
-    S = utils.rlevy(Knots.shape[0],m=0,s=gamma)
+    S = utils.rlevy(Knots_data.shape[0],m=0,s=gamma)
     R_at_knots[:,idx] = S
     for idy in np.arange(n_s):
-        d_tmp = distance.cdist(Stations[idy,:].reshape((-1,2)),Knots)
-        weights = utils.weights_fun(d_tmp,radius,bw)
+        d_tmp = distance.cdist(Stations[idy,:].reshape((-1,2)),Knots_data)
+        weights = utils.wendland_weights_fun(d_tmp,radius)
         R_s[idy,idx] = np.sum(weights*S)
         if idx ==1: 
             R_weights[idy,:] = weights
@@ -229,7 +250,7 @@ Y[:] = np.nan
 unifs = np.empty((n_s,n_t))
 unifs[:] = np.nan
 for idx in np.arange(n_s):
-    Y[idx,:] = utils.RW_2_gev(X[idx,:], phi_vec[idx], gamma, Loc[idx,:], Scale[idx,:], Shape[idx,:])
+    Y[idx,:] = utils.RW_2_gev(X[idx,:], phi_vec[idx], gamma_vec[idx], Loc[idx,:], Scale[idx,:], Shape[idx,:])
     unifs[idx,:] = utils.pgev(Y[idx,:], Loc[idx,:], Scale[idx,:], Shape[idx,:])
 
 
@@ -241,13 +262,13 @@ for idx in np.arange(n_s):
 
 
 # ------------ 4. Save initial values -----------------
-data = {'Knots':Knots,
+data = {'Knots':Knots_data,
         'phi_range_weights': phi_range_weights,
         'R_weights':R_weights,
-        'radius':radius,
         'Stations':Stations,
         'phi_vec':phi_vec,
         'phi_at_knots':phi_at_knots,
+        'radius_from_knots':radius_from_knots,
         'gamma':gamma,
         'gamma_vec':gamma_vec,
         'range_vec':range_vec,
@@ -264,7 +285,8 @@ data = {'Knots':Knots,
         'beta_shape':beta_shape,
         }
 n_updates = 1001    
-sigma_m   = {'Rt':np.sqrt(2.4**2/n_Rt_knots),
+sigma_m   = {'radius':np.sqrt(2.4**2/n_Rt_knots),
+             'Rt':np.sqrt(2.4**2/n_Rt_knots),
              'phi':np.sqrt(2.4**2/n_phi_range_knots),
              'range':np.sqrt(2.4**2/n_phi_range_knots),
              'gev_params':np.sqrt(2.4**2/n_beta_gev_params),
@@ -275,7 +297,8 @@ sigma_m   = {'Rt':np.sqrt(2.4**2/n_Rt_knots),
              'beta_scale':2.4**2/n_covariates,
              'beta_shape':2.4**2/n_covariates,
              }
-prop_sigma   = {'Rt':np.eye(n_Rt_knots),
+prop_sigma   = {'radius':np.eye(n_Rt_knots),
+                'Rt':np.eye(n_Rt_knots),
                 'phi':np.eye(n_phi_range_knots),
                 'range':np.eye(n_phi_range_knots),
                 'gev_params':np.eye(n_beta_gev_params),
@@ -392,90 +415,44 @@ plt.hlines(tau_sqd, 0, 5000, colors='r', linestyles='--');
 ## --------------------------------------------------------------
 ## ----------------------- For GEV params -----------------------
 ## --------------------------------------------------------------
-# (1) loc0: 0.2,-1
-# ## Update cen and cen_above or not?
-# def X_update_test(coef):
-#     beta_loc0 = np.array([coef,-1])
-#     loc0 = Design_mat@beta_loc0 
-#     n_t = X_s.shape[1]
-#     n_s = X_s.shape[0]
-#     Loc = np.tile(loc0, n_t) + np.tile(loc1, n_t)*np.repeat(Time,n_s)
-#     Loc = Loc.reshape((n_s,n_t),order='F')
-#     # cen = utils.which_censored(Y, Loc, Scale, Shape, prob_below) # 'cen' isn't altered in Global
-#     # cen_above = ~utils.which_censored(Y, Loc, Scale, Shape, prob_above)
-                              
-#     X_tmp = utils.gev_2_RW_me(Y[~cen & ~cen_above], xp, surv_p, tau_sqd, phi, gamma, 
-#                             Loc[~cen & ~cen_above], Scale[~cen & ~cen_above], Shape[~cen & ~cen_above])
-    
-#     ll=utils.marg_transform_data_mixture_me_likelihood(Y[~cen & ~cen_above], X_tmp, X_s[~cen & ~cen_above], cen[~cen & ~cen_above], cen_above[~cen & ~cen_above], prob_below, prob_above, Loc[~cen & ~cen_above], Scale[~cen & ~cen_above], Shape[~cen & ~cen_above], 
-#                         tau_sqd, phi, gamma, xp, surv_p, den_p, thresh_X, thresh_X_above) 
-#     return ll
-
-
-# Coef = np.arange(0.18,0.22,step=0.001)
-# X_ups = np.zeros(len(Coef))
-# for idx, coef in enumerate(Coef):
-#     X_ups[idx] = X_update_test(coef)
-# plt.plot(Coef, X_ups, linestyle='solid')    
-
-def test(x):
-    return utils.loc0_gev_update_mixture_me_likelihood(Design_mat, np.array([x,-1]), Y, X_s, cen, cen_above, prob_below, prob_above, 
-                     tau_sqd, phi, gamma, loc1, Scale, Shape, Time, xp, surv_p, den_p, 
-                     thresh_X, thresh_X_above)
-
-
-Coef = np.arange(0.18,0.22,step=0.001)
-Lik = np.zeros(len(Coef))
-for idx, coef in enumerate(Coef):
-    Lik[idx] = test(coef)
-plt.plot(Coef, Lik, color='black', linestyle='solid')
-plt.axvline(0.2, color='r', linestyle='--');
-
-def test(x):
-    return utils.loc0_gev_update_mixture_me_likelihood(Design_mat, np.array([0.2,x]), Y, X_s, cen, cen_above, prob_below, prob_above, 
-                     tau_sqd, phi, gamma, loc1, Scale, Shape, Time, xp, surv_p, den_p, 
-                     thresh_X, thresh_X_above)
-Coef = np.arange(-1.2,-0.8,step=0.01)
-Lik = np.zeros(len(Coef))
-for idx, coef in enumerate(Coef):
-    Lik[idx] = test(coef)
-plt.plot(Coef, Lik, color='black', linestyle='solid')
-plt.axvline(-1, color='r', linestyle='--');
-
-
-Res = sampler.adaptive_metr(Design_mat, np.array([0.2,-1]), utils.loc0_gev_update_mixture_me_likelihood, 
-                            priors.unif_prior, 20, 5000, random_generator, np.nan, True,
-                            False, .234, 10, .8,  10,
-                            Y, X_s, cen, cen_above, prob_below, prob_above, 
-                            tau_sqd, phi, gamma, loc1, Scale, Shape, Time, xp, surv_p, den_p, 
-                            thresh_X, thresh_X_above)
-
-prop_Sigma=np.cov(Res['trace'])
-
-
-
-plt.plot(np.arange(5000),Res['trace'][0,:], linestyle='solid')
-plt.hlines(0.2, 0, 5000, colors='r', linestyles='--');
-
-plt.plot(np.arange(5000),Res['trace'][1,:], linestyle='solid')
-plt.hlines(-1, 0, 5000, colors='r', linestyles='--');
-plt.plot(*Res['trace'])
-
-
-
+from scipy.linalg import cholesky
+cholesky_U = cholesky(Cov,lower=False)
+X_star = np.empty(X.shape)
 def tmpf(x,y):
-    return utils.loc0_gev_update_mixture_me_likelihood(Design_mat, np.array([x,y]), Y, X_s, cen, cen_above, prob_below, prob_above, 
-                     tau_sqd, phi, gamma, loc1, Scale, Shape, Time, xp, surv_p, den_p, 
-                     thresh_X, thresh_X_above)
-try_size = 50
-x = np.linspace(0.18, 0.22, try_size)
-y = np.linspace(-1.1, -0.92, try_size)
+    beta_gev_params_star = np.array([x,y,0.2])
+
+    # Evaluate likelihood at new values
+    # Not broadcasting but generating at each node
+    loc0_star = Design_mat @np.array([beta_gev_params_star[0],0])
+    scale_star = Design_mat @np.array([beta_gev_params_star[1],0])
+    shape_star = Design_mat @np.array([beta_gev_params_star[2],0])
+    Loc_star = np.tile(loc0_star, n_t) + np.tile(loc1, n_t)*np.repeat(Time,n_s)
+    Loc_star = Loc_star.reshape((n_s,n_t),order='F')
+    Scale_star = np.tile(scale_star, n_t)
+    Scale_star = Scale_star.reshape((n_s,n_t),order='F')
+    Shape_star = np.tile(shape_star, n_t)
+    Shape_star = Shape_star.reshape((n_s,n_t),order='F')
+    for idx in np.arange(n_s):
+           X_star[idx,:] = utils.gev_2_RW(Y[idx,:], phi_vec[idx], gamma_vec[idx], 
+                                         Loc_star[idx,:], Scale_star[idx,:], Shape_star[idx,:])
+    Star_lik = utils.marg_transform_data_mixture_likelihood(Y, X_star, Loc_star, Scale_star, 
+                                          Shape_star, phi_vec, gamma_vec, R_s, 
+                                          cholesky_U)
+    return Star_lik
+
+
+
+
+try_size = 10
+x = np.linspace(19.5,20.5, try_size)
+y = np.linspace(0.95,1.05, try_size)
 
 func = np.empty((try_size,try_size))
 for idy,yi in enumerate(y):
     for idx,xi in enumerate(x):
          func[idy,idx] = tmpf(xi,yi)
 
+import matplotlib.pyplot as plt
 plt.contourf(x, y, func, 20, cmap='RdGy')
 plt.colorbar();
 

@@ -31,13 +31,14 @@ if __name__ == "__main__":
    import nonstat_noNugget.ns_cov as cov
    import os
    import numpy as np
-   import time
+   # import time
    import matplotlib.pyplot as plt
    from matplotlib.backends.backend_pdf import PdfPages
    from pickle import load
    from pickle import dump
    # from scipy.linalg import lapack
    from scipy.linalg import cholesky
+   from scipy.spatial import distance
    
    # Check whether the 'mpi4py' is installed
    test_mpi = os.system("python -c 'from mpi4py import *' &> /dev/null")
@@ -86,16 +87,16 @@ if __name__ == "__main__":
    Knots =  initial_values['Knots']
    phi_range_weights = initial_values['phi_range_weights']
    R_weights =  initial_values['R_weights']
-   radius =  initial_values['radius']
    Stations =  initial_values['Stations']
    phi_vec = initial_values['phi_vec']
    phi_at_knots = initial_values['phi_at_knots']
+   radius_from_knots = initial_values['radius_from_knots']
    gamma = initial_values['gamma']
    gamma_vec = initial_values['gamma_vec']
    range_vec = initial_values['range_vec']
    range_at_knots = initial_values['range_at_knots']
    nu = initial_values['nu']
-   X = initial_values['X']
+   X = initial_values['X']; Xt = X[:,rank]
    R_at_knots = initial_values['R_at_knots']; Rt_at_knots = R_at_knots[:,rank]
    R_s = initial_values['R_s']; Rt_s = R_s[:,rank]
    Design_mat = initial_values['Design_mat']
@@ -121,7 +122,13 @@ if __name__ == "__main__":
    n_updates_thinned = np.int(np.ceil(n_updates/thinning))
    wh_to_plot_Xs = n_s*np.array([0.25,0.5,0.75])
    wh_to_plot_Xs = wh_to_plot_Xs.astype(int)
-
+   
+   # Distance from knots
+   Distance_from_stations_to_knots = np.empty((n_s, n_Rt_knots))
+   for ind in np.arange(n_s):
+       Distance_from_stations_to_knots[ind,:] = distance.cdist(Stations[ind,:].reshape((-1,2)),Knots)
+   
+   
    # Eigendecomposition of the correlation matrix
    one_vec = np.ones(n_s)
    Cor = cov.ns_cov(range_vec, one_vec, Stations, kappa = nu, cov_model = "matern")
@@ -149,8 +156,8 @@ if __name__ == "__main__":
    Shape = Shape.reshape((n_s,n_t),order='F')
    
    Current_Rt_prior = np.sum(utils.dlevy(Rt_at_knots, m=0, s=gamma, log=True))
-   Current_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
-                                             Shape[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
+   Current_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt, Loc[:,rank], Scale[:,rank], 
+                                             Shape[:,rank], phi_vec, gamma_vec, Rt_s, 
                                              cholesky_U)
    Current_Lik_recv = comm.gather(Current_lik,root=0)
    
@@ -159,6 +166,8 @@ if __name__ == "__main__":
    Rt_knots_trace = np.empty((n_updates_thinned, n_Rt_knots)); Rt_knots_trace[:] = np.nan
    Rt_knots_trace[0,:] = Rt_at_knots
    if rank == 0: 
+       radius_knots_trace = np.empty((n_updates_thinned, n_Rt_knots)); radius_knots_trace[:] = np.nan
+       radius_knots_trace[0,:] = radius_from_knots
        range_knots_trace = np.empty((n_updates_thinned, n_phi_range_knots)); range_knots_trace[:] = np.nan
        range_knots_trace[0,:] = range_at_knots
        phi_knots_trace = np.empty((n_updates_thinned, n_phi_range_knots)); phi_knots_trace[:] = np.nan
@@ -169,12 +178,14 @@ if __name__ == "__main__":
    
    R_knots_within_thinning = np.empty((n_Rt_knots,thinning)); R_knots_within_thinning[:] = np.nan
    if rank == 0:
+       radius_knots_within_thinning = np.empty((n_Rt_knots,thinning)); radius_knots_within_thinning[:] = np.nan
        range_knots_within_thinning = np.empty((n_phi_range_knots,thinning)); range_knots_within_thinning[:] = np.nan
        phi_knots_within_thinning = np.empty((n_phi_range_knots,thinning)); phi_knots_within_thinning[:] = np.nan
        beta_gev_params_within_thinning = np.empty((n_beta_gev_params,thinning)); beta_gev_params_within_thinning[:] = np.nan
    
    
    R_accept = 0
+   radius_accept = 0
    range_accept = 0 
    phi_accept = 0
    beta_gev_accept = 0
@@ -207,7 +218,7 @@ if __name__ == "__main__":
            Star_lik = -np.inf
        else:    
            Star_Rt_prior = np.sum(utils.dlevy(Rt_at_knots_star, m=0, s=gamma, log=True))
-           Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
+           Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt, Loc[:,rank], Scale[:,rank], 
                                                  Shape[:,rank], phi_vec, gamma_vec, Rt_s_star, 
                                                  cholesky_U)
        
@@ -226,12 +237,73 @@ if __name__ == "__main__":
        # Gather anyways
        R_knots_within_thinning[:, index_within] = Rt_at_knots
        Current_Lik_recv = comm.gather(Current_lik,root=0)
-       R_s_recv = comm.gather(Rt_s,root=0)
-       if rank ==0: 
-           R_s[:] = np.vstack(R_s_recv).T
+       # R_s_recv = comm.gather(Rt_s,root=0)
+       # if rank ==0: 
+       #     R_s[:] = np.vstack(R_s_recv).T
        
            
-         
+       accept = 0
+       # --------- Update radius_from_knots -----------
+       #Propose new values
+       radius_from_knots_proposal = np.empty(n_Rt_knots)
+       R_weights_star = np.empty((n_s,Knots.shape[0]))
+       gamma_vec_star = np.repeat(np.nan, n_s)
+       Xt_star = np.empty(n_s)
+       if rank==0:
+           tmp_upper = cholesky(prop_Sigma['radius'],lower=False)
+           tmp_params_star = sigma_m['radius']*random_generator.standard_normal(n_Rt_knots)
+           radius_from_knots_proposal = radius_from_knots + np.matmul(tmp_upper.T , tmp_params_star)
+       radius_from_knots_proposal = comm.bcast(radius_from_knots_proposal,root=0)
+    
+       # Not broadcasting but generating at each node
+       for idy in np.arange(n_s):
+           tmp_weights = utils.wendland_weights_fun(Distance_from_stations_to_knots[idy,:],
+                                                              radius_from_knots_proposal)
+           R_weights_star[idy,:] = tmp_weights
+           gamma_vec_star[idy] = np.sum(np.sqrt(tmp_weights[np.nonzero(tmp_weights)]*gamma))**2 #only save once
+
+       Rt_s_star[:] = R_weights_star @ Rt_at_knots
+       for idx in np.arange(n_s):
+           Xt_star[idx] = utils.gev_2_RW(Y[idx,rank], phi_vec[idx], gamma_vec_star[idx], 
+                                         Loc[idx,rank], Scale[idx,rank], Shape[idx,rank])
+
+       # Evaluate likelihood at new values
+       if np.all(np.logical_and(radius_from_knots_proposal>0, radius_from_knots_proposal<10)):           
+           Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt_star, Loc[:,rank], Scale[:,rank], 
+                                                 Shape[:,rank], phi_vec, gamma_vec_star, Rt_s_star, 
+                                                 cholesky_U)
+       else:
+           Star_lik = -np.inf
+       
+       Star_Lik_recv = comm.gather(Star_lik,root=0)
+       
+       # Determine update or not
+       if rank==0:
+           log_num = np.sum(Star_Lik_recv)
+           log_denom = np.sum(Current_Lik_recv)
+           r = np.exp(log_num - log_denom)
+           if ~np.isfinite(r):
+               r = 0
+           if random_generator.uniform(0,1,1)<r:
+               radius_from_knots[:] = radius_from_knots_proposal
+               Current_Lik_recv[:] = Star_Lik_recv
+               accept = 1
+               radius_accept = radius_accept + 1
+           radius_knots_within_thinning[:, index_within] = radius_from_knots
+       
+       # Broadcast according to accept
+       accept = comm.bcast(accept,root=0)
+       if accept==1:
+           R_weights[:] = R_weights_star
+           gamma_vec[:] = gamma_vec_star
+           Rt_s[:] = Rt_s_star 
+           Xt[:] = Xt_star
+           Current_lik = Star_lik
+        
+       # R_s_recv = comm.gather(Rt_s,root=0)
+       # if rank ==0: 
+       #     R_s[:] = np.vstack(R_s_recv).T
+           
        
        accept = 0
        # --------- Update range_vec -----------
@@ -256,8 +328,8 @@ if __name__ == "__main__":
            # V_star[:] = eig_Cor[1]
            # d_star[:] = eig_Cor[0]   
            cholesky_U_star[:] = cholesky(Cor_star,lower=False)
-           Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
-                                                 Shape[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
+           Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt, Loc[:,rank], Scale[:,rank], 
+                                                 Shape[:,rank], phi_vec, gamma_vec, Rt_s, 
                                                  cholesky_U_star)
        else:
            Star_lik = -np.inf
@@ -285,6 +357,7 @@ if __name__ == "__main__":
            # V[:] = V_star
            # d[:] = d_star
            cholesky_U[:] = cholesky_U_star
+           Current_lik = Star_lik
            
            
            
@@ -297,13 +370,16 @@ if __name__ == "__main__":
            phi_at_knots_proposal = phi_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
            phi_vec_star[:] = phi_range_weights @ phi_at_knots_proposal    
        phi_vec_star = comm.bcast(phi_vec_star,root=0)
-       
+       for idx in np.arange(n_s):
+           Xt_star[idx] = utils.gev_2_RW(Y[idx,rank], phi_vec_star[idx], gamma_vec[idx], 
+                                         Loc[idx,rank], Scale[idx,rank], Shape[idx,rank])
+           
        # Evaluate likelihood at new values
        if np.any(phi_vec_star>=1) or np.any(phi_vec_star<=0): #U(0,1) priors
            Star_lik = -np.inf
        else: 
-           Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc[:,rank], Scale[:,rank], 
-                                                 Shape[:,rank], phi_vec_star, gamma_vec, R_s[:,rank], 
+           Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt_star, Loc[:,rank], Scale[:,rank], 
+                                                 Shape[:,rank], phi_vec_star, gamma_vec, Rt_s, 
                                                  cholesky_U)
        Star_Lik_recv = comm.gather(Star_lik,root=0)
        
@@ -322,7 +398,11 @@ if __name__ == "__main__":
            phi_knots_within_thinning[:, index_within] = phi_at_knots
                
        # Broadcast anyways
-       phi_vec = comm.bcast(phi_vec,root=0)
+       accept = comm.bcast(accept,root=0)
+       if accept==1:
+           phi_vec[:] = phi_vec_star 
+           Xt[:] = Xt_star
+           Current_lik = Star_lik
          
            
        accept = 0
@@ -348,8 +428,12 @@ if __name__ == "__main__":
        Shape_star = np.tile(shape_star, n_t)
        Shape_star = Shape_star.reshape((n_s,n_t),order='F')
        
-       Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], X[:,rank], Loc_star[:,rank], Scale_star[:,rank], 
-                                                 Shape_star[:,rank], phi_vec, gamma_vec, R_s[:,rank], 
+       for idx in np.arange(n_s):
+           Xt_star[idx] = utils.gev_2_RW(Y[idx,rank], phi_vec[idx], gamma_vec[idx], 
+                                         Loc_star[idx,rank], Scale_star[idx,rank], Shape_star[idx,rank])
+           
+       Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt_star, Loc_star[:,rank], Scale_star[:,rank], 
+                                                 Shape_star[:,rank], phi_vec, gamma_vec, Rt_s, 
                                                  cholesky_U)
        Star_Lik_recv = comm.gather(Star_lik,root=0)
        
@@ -376,6 +460,7 @@ if __name__ == "__main__":
            Loc[:] = Loc_star
            Scale[:] = Scale_star
            Shape[:] = Shape_star
+           Xt[:] = Xt_star
            Current_lik = Star_lik
        # time_spent = time.time()-start_time
        # print(rank, time_spent)  
@@ -389,6 +474,7 @@ if __name__ == "__main__":
            # Fill in trace objects
            Rt_knots_trace[index,:] = Rt_at_knots
            if rank == 0:
+               radius_knots_trace[index,:] = radius_from_knots
                range_knots_trace[index,:] = range_at_knots
                phi_knots_trace[index,:] = phi_at_knots
                beta_gev_params_trace[index,:] = beta_gev_params
@@ -414,6 +500,20 @@ if __name__ == "__main__":
                    
                    
            if rank == 0:
+               sigma_m['radius'] = np.exp(np.log(sigma_m['radius']) + gamma2*(radius_accept/thinning - r_opt_2d))
+               radius_accept = 0
+               prop_Sigma['radius'] = prop_Sigma['radius'] + gamma1*(np.cov(radius_knots_within_thinning) - prop_Sigma['radius'])
+               check_chol_cont = True
+               while check_chol_cont:
+                   try:
+                       # Initialize prop_C
+                       np.linalg.cholesky(prop_Sigma['radius'])
+                       check_chol_cont = False
+                   except  np.linalg.LinAlgError:
+                       prop_Sigma['radius'] = prop_Sigma['radius'] + eps*np.eye(n_Rt_knots)
+                       print("Oops. Proposal covariance matrix is now:\n")
+                       print(prop_Sigma['radius'])
+                       
                sigma_m['range'] = np.exp(np.log(sigma_m['range']) + gamma2*(range_accept/thinning - r_opt_2d))
                range_accept = 0
                prop_Sigma['range'] = prop_Sigma['range'] + gamma1*(np.cov(range_knots_within_thinning) - prop_Sigma['range'])
@@ -463,8 +563,16 @@ if __name__ == "__main__":
        # ----------------------------------------------------------------------------------------
        # -------------------------- Echo & save every 'thinning' steps --------------------------
        # ----------------------------------------------------------------------------------------
-       if (iter / thinning) % echo_interval == 0:           
+       if (iter / thinning) % echo_interval == 0:    
+           # Temporarily not saving because they can recovered from the saved results
+           # R_s_recv = comm.gather(Rt_s,root=0)
+           # if rank ==0: 
+           #     R_s[:] = np.vstack(R_s_recv).T
            
+           # X_recv = comm.gather(Xt,root=0)
+           # if rank ==0: 
+           #     X[:] = np.vstack(X_recv).T     
+             
            if rank == 0:
                print('Done with '+str(index)+" updates while thinned by "+str(thinning)+" steps,\n")
                
@@ -472,10 +580,10 @@ if __name__ == "__main__":
                initial_values = {'Knots':Knots,
                                  'phi_range_weights': phi_range_weights,
                                  'R_weights':R_weights,
-                                 'radius':radius,
                                  'Stations':Stations,
                                  'phi_vec':phi_vec,
                                  'phi_at_knots':phi_at_knots,
+                                 'radius_from_knots':radius_from_knots,
                                  'gamma':gamma,
                                  'gamma_vec':gamma_vec,
                                  'range_vec':range_vec,
@@ -495,6 +603,7 @@ if __name__ == "__main__":
                    dump(prop_Sigma, f)
                    dump(iter, f)
                    dump(Rt_knots_trace, f)
+                   dump(radius_knots_trace, f)
                    dump(range_knots_trace, f)
                    dump(phi_knots_trace, f)
                    dump(beta_gev_params_trace, f)
@@ -596,6 +705,36 @@ if __name__ == "__main__":
                
                #-page-4
                fig = plt.figure(figsize = (8.75, 11.75))
+               plt.subplot2grid(grid_size, (0,0)) 
+               plt.plot(radius_knots_trace[:,0], color='gray', linestyle='solid')
+               plt.ylabel(r'$r$[0]')
+               plt.subplot2grid(grid_size, (0,1))
+               plt.plot(radius_knots_trace[:,1], color='gray', linestyle='solid')
+               plt.ylabel(r'$r$[1]')
+               plt.subplot2grid(grid_size, (1,0))  
+               plt.plot(radius_knots_trace[:,2], color='gray', linestyle='solid')
+               plt.ylabel(r'$r$[2]')
+               plt.subplot2grid(grid_size, (1,1)) 
+               plt.plot(radius_knots_trace[:,3], color='gray', linestyle='solid')
+               plt.ylabel(r'$r$[3]')
+               plt.subplot2grid(grid_size, (2,0))  
+               plt.plot(radius_knots_trace[:,4], color='gray', linestyle='solid')
+               plt.ylabel(r'$r$[4]')
+               plt.subplot2grid(grid_size, (2,1))  
+               plt.plot(radius_knots_trace[:,5], color='gray', linestyle='solid')
+               plt.ylabel(r'$r$[5]')
+               plt.subplot2grid(grid_size, (3,0))  
+               plt.plot(radius_knots_trace[:,6], color='gray', linestyle='solid')
+               plt.ylabel(r'$r$[6]')
+               plt.subplot2grid(grid_size, (3,1))  
+               plt.plot(radius_knots_trace[:,7], color='gray', linestyle='solid')
+               plt.ylabel(r'$r$[7]')
+               plt.tight_layout()
+               pdf_pages.savefig(fig)
+               plt.close()
+               
+               #-page-5
+               fig = plt.figure(figsize = (8.75, 11.75))
                plt.subplot2grid(grid_size, (0,0)) # loc0
                plt.plot(beta_gev_params_trace[:,0], color='gray', linestyle='solid')
                plt.ylabel(r'$\mu$')
@@ -613,10 +752,10 @@ if __name__ == "__main__":
                initial_values = {'Knots':Knots,
                                  'phi_range_weights': phi_range_weights,
                                  'R_weights':R_weights,
-                                 'radius':radius,
                                  'Stations':Stations,
                                  'phi_vec':phi_vec,
                                  'phi_at_knots':phi_at_knots, # not broadcasted
+                                 'radius_from_knots':radius_from_knots, # not broadcasted
                                  'gamma':gamma,
                                  'gamma_vec':gamma_vec,
                                  'range_vec':range_vec, # not broadcasted

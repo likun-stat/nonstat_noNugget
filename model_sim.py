@@ -1214,6 +1214,71 @@ def X_update(Y, cen, cen_above, xp, surv_p, tau_sqd, phi, gamma, Loc, Scale, Sha
 
 
 
+
+## -------------------------------------------------------------------------- ##
+## -------------------------------------------------------------------------- ##
+##                           Gaussian moothing kernel
+## -------------------------------------------------------------------------- ##
+## -------------------------------------------------------------------------- ##
+## When d > fit radius, the weight will be zero
+## h is the bandwidth parameter
+##
+
+def weights_fun(d,radius,h=1, cutoff=True):
+  if(isinstance(d, (int, np.int64, float))): d=np.array([d])
+  tmp = np.exp(-d**2/(2*h))
+  if cutoff: tmp[d>radius] = 0
+  
+  return tmp/np.sum(tmp)
+
+                                                                             
+##
+## -------------------------------------------------------------------------- ##
+
+
+
+
+
+
+
+
+## -------------------------------------------------------------------------- ##
+## -------------------------------------------------------------------------- ##
+##                       Wendland compactly-supported basis
+## -------------------------------------------------------------------------- ##
+## -------------------------------------------------------------------------- ##
+## fields_Wendland(d, theta = 1, dimension, k, derivative=0, phi=NA)
+## theta: the range where the basis value is non-zero, i.e. [0, theta]
+## dimension: dimension of locations 
+## k: smoothness of the function at zero.
+
+def wendland_weights_fun(d, theta, k=0, dimension=2, derivative=0):
+  if(isinstance(d, (int, np.int64, float))): d=np.array([d])      
+  d = d/theta
+  l = np.floor(dimension/2) + k + 1
+  if (k==0): 
+      res = np.where(d < 1, (1-d)**l, 0)
+
+  if (k==1):
+      res = np.where(d < 1, (1-d)**(l+k) * ((l+1)*d + 1), 0)
+  
+  if (k==2):
+      res = np.where(d < 1, (1-d)**(l+k) * ((l**2+4*l+3)*d**2 + (3*l+6) * d + 3), 0)
+      
+  if (k==3):
+      res = np.where(d < 1, (1-d)**(l+k) * ((l**3+9*l**2+23*l+15)*d**3 + 
+                                            (6*l**2+36*l+45) * d**2 + (15*l+45) * d + 15), 0)
+  
+  if (k>3):
+      sys.exit("k must be less than 4")
+  return res/np.sum(res)
+
+                                                                             
+##
+## -------------------------------------------------------------------------- ##
+
+
+
 ## -------------------------------------------------------------------------- ##
 ## -------------------------------------------------------------------------- ##
 ##                             Censored likelihood
@@ -1970,24 +2035,3 @@ def Rt_update_mixture_me_likelihood(data, params, X, Z, cen, cen_above,
 
 
 
-## New python code
-
-## -------------------------------------------------------------------------- ##
-## -------------------------------------------------------------------------- ##
-##                           Gaussian moothing kernel
-## -------------------------------------------------------------------------- ##
-## -------------------------------------------------------------------------- ##
-## When d > fit radius, the weight will be zero
-## h is the bandwidth parameter
-##
-
-def weights_fun(d,radius,h=1, cutoff=True):
-  if(isinstance(d, (int, np.int64, float))): d=np.array([d])
-  tmp = np.exp(-d**2/(2*h))
-  if cutoff: tmp[d>radius] = 0
-  
-  return tmp/np.sum(tmp)
-
-                                                                             
-##
-## -------------------------------------------------------------------------- ##
