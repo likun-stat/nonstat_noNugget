@@ -92,9 +92,9 @@ int find_xrange_pRW_C(double min_p, double max_p, double min_x, double max_x, do
     double p_min_x;
     int tmp_int;
     tmp_int = 1-RW_marginal_C(&min_x, phi, gamma, 1, &p_min_x);
-    while (p_min_x > min_p){
+    while (1-p_min_x > min_p){
         min_x = min_x/2; /* R^phi*W is always positive */
-        tmp_int = 1-RW_marginal_C(&min_x, phi, gamma, 1, &p_min_x);
+        tmp_int = RW_marginal_C(&min_x, phi, gamma, 1, &p_min_x);
     }
         
     x_range[0] = min_x;
@@ -109,6 +109,29 @@ int find_xrange_pRW_C(double min_p, double max_p, double min_x, double max_x, do
         
     x_range[1] = max_x;
     return 1;
+}
+
+/* Get the quantile using the bisection method */
+double qRW_bisection_C(double p, double phi, double gamma, int n_x){
+    double x_range[2];
+    int tmp_res = 0;
+    tmp_res = find_xrange_pRW_C(p, p, 1.0, 5.0, phi, gamma, x_range);
+    double m = (x_range[0]+x_range[1])/2;
+    int iter=0;
+    double new_F;
+    tmp_res = RW_marginal_C(&m, phi, gamma, 1, &new_F);
+    double diff = 1-new_F-p;
+    while (iter<100 & abs(diff)> 1e-04){
+        if (diff>0){
+            x_range[1] = m;}
+        else{
+            x_range[0]=m;}
+        m = (x_range[0]+x_range[1])/2;
+        tmp_res = RW_marginal_C(&m, phi, gamma, 1, &new_F);
+        diff = 1-new_F-p;
+        iter += 1;
+    }
+    return m;
 }
 
 /* Get the quantile range for certain probability levels */
@@ -156,6 +179,30 @@ int RW_density_C(double *xval, double phi, double gamma, int n_xval, double *res
     }
     return 1;
 }
+
+/* Get the quantile using Newton-Raphson method */
+double qRW_newton_C(double p, double phi, double gamma, int n_x){
+    double x_range[2];
+    int tmp_res = 0;
+    tmp_res = find_xrange_pRW_C(p, p, 1.0, 5.0, phi, gamma, x_range);
+    double new_x, current_x = x_range[0];
+    int iter=0;
+    double error=1;
+    double Surv_value, f_value;
+    
+    while (iter<400 & error> 1e-08){
+        tmp_res = RW_marginal_C(&current_x , phi, gamma, 1, &Surv_value);
+        tmp_res = RW_density_C(&current_x , phi, gamma, 1, &f_value);
+        new_x = current_x - (1-Surv_value-p)/f_value;
+        error = abs(new_x-current_x);
+        iter += 1;
+        current_x = fmax(x_range[0], new_x);
+        if(current_x == x_range[0]){current_x = qRW_bisection_C(p, phi, gamma, 100);}
+    }
+    
+    return current_x;
+}
+
 
 /* Marginal density function for R^phi*W + epsilon */
 int dRW_me_interp_C(double *xval, double *xp, double *den_p, double tau_sqd, double phi, double gamma, int n_xval, int n_grid, double *result){

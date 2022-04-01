@@ -443,13 +443,14 @@ def tmpf(x,y):
 
 
 
-try_size = 10
+try_size = 20
 x = np.linspace(19.5,20.5, try_size)
 y = np.linspace(0.95,1.05, try_size)
 
 func = np.empty((try_size,try_size))
 for idy,yi in enumerate(y):
     for idx,xi in enumerate(x):
+         print(idx,idy)
          func[idy,idx] = tmpf(xi,yi)
 
 import matplotlib.pyplot as plt

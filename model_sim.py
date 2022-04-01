@@ -57,6 +57,9 @@ lib.find_xrange_pRW_C.restype = ctypes.c_int
 lib.find_xrange_pRW_C.argtypes = (ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double,
                                      ctypes.c_double, ctypes.c_double, i_and_o_type)
 
+lib.qRW_bisection_C.restype = ctypes.c_double
+lib.qRW_bisection_C.argtypes = (ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_int)
+
 lib.find_xrange_pRW_me_C.restype = ctypes.c_int
 lib.find_xrange_pRW_me_C.argtypes = (ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double,
                                      grid_type, grid_type, ctypes.c_double, ctypes.c_double, ctypes.c_double, 
@@ -66,6 +69,9 @@ lib.RW_density_C.restype = ctypes.c_int
 lib.RW_density_C.argtypes = (i_and_o_type, 
                       ctypes.c_double, ctypes.c_double, ctypes.c_int,
                       i_and_o_type)
+
+lib.qRW_newton_C.restype = ctypes.c_double
+lib.qRW_newton_C.argtypes = (ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_int)
 
 lib.dRW_me_interp_C.restype = ctypes.c_int
 lib.dRW_me_interp_C.argtypes = (i_and_o_type, grid_type, grid_type,
@@ -481,7 +487,7 @@ def find_xrange_pRW(min_p, max_p, x_init, phi, gamma):
     ## First the min
     p_min_x = pRW(min_x, phi, gamma)
     while p_min_x > min_p:
-        min_x = min_x-40/phi
+        min_x = min_x/2 # RW must be positive
         p_min_x = pRW(min_x, phi, gamma)
     x_range[0] = min_x
 
@@ -574,8 +580,12 @@ def qRW_interp(p, phi, gamma, cdf_vals = np.nan, x_vals = np.nan, n_x=400, lower
     large_delta_large_x = False
     # (1) When phi is varying over space, we need to calculate one quantile for each phi value.
     # Given more accuarte [lower,upper] values for the single p, we can decrease n_x.
-    if(len(p)==1): n_x=np.int(100*(p+0.1))
-    
+    # if(len(p)==1): n_x=np.int(100*(p+0.1))
+    if(np.any(p<0.05)): 
+        lower=np.min(10*p)
+        upper=np.max(50*p)
+    if(np.any(p<0.001)): n_x=600
+        
     # (2) Generate x_vals and cdf_vals to interpolate
     if np.any(np.isnan(x_vals)):
         x_range = np.empty(2)
@@ -612,6 +622,42 @@ def qRW_interp(p, phi, gamma, cdf_vals = np.nan, x_vals = np.nan, n_x=400, lower
             tck = interp.pchip(cdf_vals, x_vals)
             q_vals[~which] = tck(p[~which])  
     return q_vals
+
+def qRW_bisection(p, phi, gamma, n_x=100):
+    x_range = np.empty(2)
+    x_range = find_xrange_pRW(p, p, np.array([1., 5.]), phi, gamma)
+    m = (x_range[0]+x_range[1])/2
+    iter=0
+    new_F = pRW(m, phi, gamma)-p
+    while iter<100 and np.abs(new_F) > 1e-04:
+        if new_F>0: 
+            x_range[1] = m 
+        else: 
+            x_range[0]=m
+        m = (x_range[0]+x_range[1])/2
+        new_F = pRW(m, phi, gamma)-p
+        iter += 1
+        
+    return m
+
+def qRW_newton(p, phi, gamma, n_x=400):
+    x_range = np.empty(2)
+    x_range = find_xrange_pRW(p, p, np.array([1., 5.]), phi, gamma)
+    current_x = x_range[0]; iter=0; error=1
+    while iter<400 and error > 1e-08:
+        tmp = (pRW(current_x, phi, gamma)-p)/dRW(current_x, phi, gamma)
+        new_x = current_x - tmp[0]
+        error = np.abs(new_x-current_x)
+        iter += 1
+        current_x = max(x_range[0],new_x)
+        if(current_x==x_range[0]): current_x = qRW_bisection(p, phi, gamma)
+        
+    return current_x
+
+# C++ implementation
+qRW_Newton = np.vectorize(lib.qRW_newton_C, excluded=['n_x'])
+
+
 
 def qRW_me_interp(p, xp, surv_p, tau_sqd, phi, gamma, 
            cdf_vals = np.nan, x_vals = np.nan, n_x=400, lower=5, upper=20):
@@ -1179,7 +1225,7 @@ def RW_2_gev(X, phi, gamma, Loc, Scale, Shape):
 
 def gev_2_RW(Y, phi, gamma, Loc, Scale, Shape):
     unifs = pgev(Y, Loc, Scale, Shape)
-    scalemixes = qRW_interp(unifs, phi, gamma)
+    scalemixes = qRW_Newton(unifs, phi, gamma, 400)
     return scalemixes 
 
 
@@ -1397,7 +1443,9 @@ def marg_transform_data_mixture_likelihood_1t(Y, X, Loc, Scale, Shape, phi_vec, 
   ll = np.empty(Y.shape)
   ll[:] = np.nan
   W_vec = X/R_vec**phi_vec
-  if np.any(W_vec < 1): return -np.inf
+  # ## qRW_interp performs poorly when p<0.005
+  if np.any(W_vec < 0.99): return -np.inf
+  W_vec[W_vec<1] = 1.001
   Z_vec = pareto_to_Norm(W_vec)
   # part1 = -0.5*eig2inv_quadform_vector(V, 1/d, Z_vec)-0.5*np.sum(np.log(d)) # multivariate density
   cholesky_inv = lapack.dpotrs(cholesky_U,Z_vec)

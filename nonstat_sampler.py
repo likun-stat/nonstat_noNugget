@@ -263,9 +263,8 @@ if __name__ == "__main__":
            gamma_vec_star[idy] = np.sum(np.sqrt(tmp_weights[np.nonzero(tmp_weights)]*gamma))**2 #only save once
 
        Rt_s_star[:] = R_weights_star @ Rt_at_knots
-       for idx in np.arange(n_s):
-           Xt_star[idx] = utils.gev_2_RW(Y[idx,rank], phi_vec[idx], gamma_vec_star[idx], 
-                                         Loc[idx,rank], Scale[idx,rank], Shape[idx,rank])
+       Xt_star[:] = utils.gev_2_RW(Y[:,rank], phi_vec, gamma_vec_star, 
+                                         Loc[:,rank], Scale[:,rank], Shape[:,rank])
 
        # Evaluate likelihood at new values
        if np.all(np.logical_and(radius_from_knots_proposal>0, radius_from_knots_proposal<10)):           
@@ -370,9 +369,8 @@ if __name__ == "__main__":
            phi_at_knots_proposal = phi_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
            phi_vec_star[:] = phi_range_weights @ phi_at_knots_proposal    
        phi_vec_star = comm.bcast(phi_vec_star,root=0)
-       for idx in np.arange(n_s):
-           Xt_star[idx] = utils.gev_2_RW(Y[idx,rank], phi_vec_star[idx], gamma_vec[idx], 
-                                         Loc[idx,rank], Scale[idx,rank], Shape[idx,rank])
+       Xt_star[:] = utils.gev_2_RW(Y[:,rank], phi_vec_star, gamma_vec, 
+                                         Loc[:,rank], Scale[:,rank], Shape[:,rank])
            
        # Evaluate likelihood at new values
        if np.any(phi_vec_star>=1) or np.any(phi_vec_star<=0): #U(0,1) priors
@@ -428,9 +426,8 @@ if __name__ == "__main__":
        Shape_star = np.tile(shape_star, n_t)
        Shape_star = Shape_star.reshape((n_s,n_t),order='F')
        
-       for idx in np.arange(n_s):
-           Xt_star[idx] = utils.gev_2_RW(Y[idx,rank], phi_vec[idx], gamma_vec[idx], 
-                                         Loc_star[idx,rank], Scale_star[idx,rank], Shape_star[idx,rank])
+       Xt_star[:] = utils.gev_2_RW(Y[:,rank], phi_vec, gamma_vec, 
+                                         Loc_star[:,rank], Scale_star[:,rank], Shape_star[:,rank])
            
        Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt_star, Loc_star[:,rank], Scale_star[:,rank], 
                                                  Shape_star[:,rank], phi_vec, gamma_vec, Rt_s, 
