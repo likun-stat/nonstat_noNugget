@@ -369,13 +369,14 @@ if __name__ == "__main__":
            phi_at_knots_proposal = phi_at_knots + np.matmul(tmp_upper.T , tmp_params_star)
            phi_vec_star[:] = phi_range_weights @ phi_at_knots_proposal    
        phi_vec_star = comm.bcast(phi_vec_star,root=0)
-       Xt_star[:] = utils.gev_2_RW(Y[:,rank], phi_vec_star, gamma_vec, 
-                                         Loc[:,rank], Scale[:,rank], Shape[:,rank])
+       
            
        # Evaluate likelihood at new values
        if np.any(phi_vec_star>=1) or np.any(phi_vec_star<=0): #U(0,1) priors
            Star_lik = -np.inf
        else: 
+           Xt_star[:] = utils.gev_2_RW(Y[:,rank], phi_vec_star, gamma_vec, 
+                                         Loc[:,rank], Scale[:,rank], Shape[:,rank])
            Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt_star, Loc[:,rank], Scale[:,rank], 
                                                  Shape[:,rank], phi_vec_star, gamma_vec, Rt_s, 
                                                  cholesky_U)

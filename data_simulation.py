@@ -410,6 +410,54 @@ plt.hlines(tau_sqd, 0, 5000, colors='r', linestyles='--');
 
 
 
+## --------------------------------------------------------------------
+## ----------------------- For radii from knots -----------------------
+## --------------------------------------------------------------------
+# Distance from knots
+Distance_from_stations_to_knots = np.empty((n_s, n_Rt_knots))
+for ind in np.arange(n_s):
+    Distance_from_stations_to_knots[ind,:] = distance.cdist(Stations[ind,:].reshape((-1,2)),Knots_data)
+ 
+R_weights_star = np.empty((n_s,Knots_data.shape[0]))
+R_s_star = np.empty(R_s.shape)
+gamma_vec_star = np.repeat(np.nan, n_s)
+X_star = np.empty(X.shape)
+
+def tmpf(radius_knot1):
+    radius_from_knots_proposal = np.repeat(3.5,n_Rt_knots)
+    radius_from_knots_proposal[0] = radius_knot1
+ 
+    # Not broadcasting but generating at each node
+    for idy in np.arange(n_s):
+        tmp_weights = utils.wendland_weights_fun(Distance_from_stations_to_knots[idy,:],
+                                                       radius_from_knots_proposal)
+        R_weights_star[idy,:] = tmp_weights
+        gamma_vec_star[idy] = np.sum(np.sqrt(tmp_weights[np.nonzero(tmp_weights)]*gamma))**2 #only save once
+    for rank in np.arange(n_t):
+        R_s_star[:,rank] = R_weights_star @ R_at_knots[:,rank]
+        X_star[:,rank] = utils.gev_2_RW(Y[:,rank], phi_vec, gamma_vec_star, 
+                                  Loc[:,rank], Scale[:,rank], Shape[:,rank])
+
+    # Evaluate likelihood at new values
+    if np.all(np.logical_and(radius_from_knots_proposal>0, radius_from_knots_proposal<10)):           
+        Star_lik = utils.marg_transform_data_mixture_likelihood(Y, X_star, Loc, Scale, 
+                                          Shape, phi_vec, gamma_vec_star, R_s_star, 
+                                          cholesky_U)
+    else:
+        Star_lik = -np.inf
+    return Star_lik
+
+try_size = 40
+x = np.linspace(3.48,3.52, try_size)
+
+func = np.empty(try_size)
+for idx,xi in enumerate(x):
+         print(idx,xi)
+         func[idx] = tmpf(xi)
+
+import matplotlib.pyplot as plt
+plt.plot(x, func, linestyle='solid')
+
 
 
 ## --------------------------------------------------------------
