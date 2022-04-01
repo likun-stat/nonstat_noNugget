@@ -262,12 +262,12 @@ if __name__ == "__main__":
            R_weights_star[idy,:] = tmp_weights
            gamma_vec_star[idy] = np.sum(np.sqrt(tmp_weights[np.nonzero(tmp_weights)]*gamma))**2 #only save once
 
-       Rt_s_star[:] = R_weights_star @ Rt_at_knots
-       Xt_star[:] = utils.gev_2_RW(Y[:,rank], phi_vec, gamma_vec_star, 
-                                         Loc[:,rank], Scale[:,rank], Shape[:,rank])
 
        # Evaluate likelihood at new values
-       if np.all(np.logical_and(radius_from_knots_proposal>0, radius_from_knots_proposal<10)):           
+       if np.all(np.logical_and(radius_from_knots_proposal>0, radius_from_knots_proposal<10)):     
+           Rt_s_star[:] = R_weights_star @ Rt_at_knots
+           Xt_star[:] = utils.gev_2_RW(Y[:,rank], phi_vec, gamma_vec_star, 
+                                         Loc[:,rank], Scale[:,rank], Shape[:,rank])
            Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt_star, Loc[:,rank], Scale[:,rank], 
                                                  Shape[:,rank], phi_vec, gamma_vec_star, Rt_s_star, 
                                                  cholesky_U)
