@@ -54,6 +54,9 @@ if __name__ == "__main__":
    size = comm.Get_size()
    thinning = 10; echo_interval = 50; n_updates = 60001
   
+   import warnings
+   warnings.filterwarnings("ignore", category=RuntimeWarning) 
+   
    # Load data input
    with open('data_sim1.pkl', 'rb') as f:
      Y = load(f)
