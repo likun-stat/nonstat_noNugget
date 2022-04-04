@@ -362,7 +362,7 @@ if __name__ == "__main__":
            Current_lik = Star_lik
            
            
-           
+       accept = 0    
        # --------- Update phi_vec -----------
        #Propose new values
        phi_vec_star = np.empty(n_s)
@@ -397,6 +397,7 @@ if __name__ == "__main__":
                phi_vec[:] = phi_vec_star 
                Current_Lik_recv[:] = Star_Lik_recv
                phi_accept = phi_accept + 1
+               accept = 1
            phi_knots_within_thinning[:, index_within] = phi_at_knots
                
        # Broadcast anyways
