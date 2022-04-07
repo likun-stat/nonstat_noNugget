@@ -53,7 +53,7 @@ if __name__ == "__main__":
            Y = load(f)
            initial_values = load(f)
            sigma_m = load(f)
-           prop_sigma = load(f)
+           prop_Sigma = load(f)
            iter_current = load(f)
            Rt_knots_trace = load(f)
            radius_knots_trace = load(f)
