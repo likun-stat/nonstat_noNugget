@@ -40,28 +40,29 @@ isometric_grid = np.r_[
 Knots_data = isometric_grid
 radius = 3.5
 radius_from_knots = np.repeat(radius, Knots_data.shape[0])
+# radius_from_knots[0]=4; radius_from_knots[12]=4
 
 # import matplotlib.pyplot as plt
-# circle0 = plt.Circle((Knots[0,0],Knots[0,1]), radius, color='r', fill=False)
-# circle1 = plt.Circle((Knots[1,0],Knots[1,1]), radius, color='r', fill=False)
-# circle2 = plt.Circle((Knots[2,0],Knots[2,1]), radius, color='r', fill=False)
-# circle3 = plt.Circle((Knots[3,0],Knots[3,1]), radius, color='r', fill=False)
-# circle4 = plt.Circle((Knots[4,0],Knots[4,1]), radius, color='r', fill=False)
-# circle5 = plt.Circle((Knots[5,0],Knots[5,1]), radius, color='r', fill=False)
-# circle6 = plt.Circle((Knots[6,0],Knots[6,1]), radius, color='r', fill=False)
-# circle7 = plt.Circle((Knots[7,0],Knots[7,1]), radius, color='r', fill=False)
-# circle8 = plt.Circle((Knots[8,0],Knots[8,1]), radius, color='r', fill=False)
-# circle9 = plt.Circle((Knots[9,0],Knots[9,1]), radius, color='r', fill=False)
-# circle10 = plt.Circle((Knots[10,0],Knots[10,1]), radius, color='r', fill=False)
-# circle11 = plt.Circle((Knots[11,0],Knots[11,1]), radius, color='r', fill=False)
-# circle12 = plt.Circle((Knots[12,0],Knots[12,1]), radius, color='r', fill=False)
+# circle0 = plt.Circle((Knots_data[0,0],Knots_data[0,1]), radius_from_knots[0], color='b', fill=False)
+# circle1 = plt.Circle((Knots_data[1,0],Knots_data[1,1]), radius_from_knots[1], color='r', fill=False)
+# circle2 = plt.Circle((Knots_data[2,0],Knots_data[2,1]), radius_from_knots[2], color='r', fill=False)
+# circle3 = plt.Circle((Knots_data[3,0],Knots_data[3,1]), radius_from_knots[3], color='r', fill=False)
+# circle4 = plt.Circle((Knots_data[4,0],Knots_data[4,1]), radius_from_knots[4], color='r', fill=False)
+# circle5 = plt.Circle((Knots_data[5,0],Knots_data[5,1]), radius_from_knots[5], color='r', fill=False)
+# circle6 = plt.Circle((Knots_data[6,0],Knots_data[6,1]), radius_from_knots[6], color='r', fill=False)
+# circle7 = plt.Circle((Knots_data[7,0],Knots_data[7,1]), radius_from_knots[7], color='r', fill=False)
+# circle8 = plt.Circle((Knots_data[8,0],Knots_data[8,1]), radius_from_knots[8], color='r', fill=False)
+# circle9 = plt.Circle((Knots_data[9,0],Knots_data[9,1]), radius_from_knots[9], color='r', fill=False)
+# circle10 = plt.Circle((Knots_data[10,0],Knots_data[10,1]), radius_from_knots[10], color='r', fill=False)
+# circle11 = plt.Circle((Knots_data[11,0],Knots_data[11,1]), radius_from_knots[11], color='r', fill=False)
+# circle12 = plt.Circle((Knots_data[12,0],Knots_data[12,1]), radius_from_knots[12], color='b', fill=False)
 
 # ax = plt.gca()
 # ax.cla() # clear things for fresh plot
 # ax.set_xlim((0, 10))
 # ax.set_ylim((0, 10))
 # ax.scatter(Stations[:,0], Stations[:,1],marker='o', alpha=0.5)
-# ax.scatter(Knots[:,0], Knots[:,1],marker='+', c='r')
+# ax.scatter(Knots_data[:,0], Knots_data[:,1],marker='+', c='r')
 # ax.add_patch(circle0)
 # ax.add_patch(circle1)
 # ax.add_patch(circle2)
@@ -153,7 +154,7 @@ for idx in np.arange(n_t):
     R_at_knots[:,idx] = S
     for idy in np.arange(n_s):
         d_tmp = distance.cdist(Stations[idy,:].reshape((-1,2)),Knots_data)
-        weights = utils.wendland_weights_fun(d_tmp,radius)
+        weights = utils.wendland_weights_fun(d_tmp,radius_from_knots)
         R_s[idy,idx] = np.sum(weights*S)
         if idx ==1: 
             R_weights[idy,:] = weights
@@ -297,11 +298,11 @@ sigma_m   = {'radius':0.00042, #np.sqrt(2.4**2/n_Rt_knots),
              'beta_scale':2.4**2/n_covariates,
              'beta_shape':2.4**2/n_covariates,
              }
-prop_sigma   = {'radius':np.eye(n_Rt_knots)*1e-4,
+prop_sigma   = {'radius':np.eye(n_Rt_knots)*1e-3,
                 'Rt':np.eye(n_Rt_knots),
-                'phi':np.eye(n_phi_range_knots),
+                'phi':np.eye(n_phi_range_knots)*1e-3,
                 'range':np.eye(n_phi_range_knots),
-                'gev_params':np.eye(n_beta_gev_params),
+                'gev_params':np.eye(n_beta_gev_params)*1e-3,
                 'theta_c':np.eye(2),
                 'beta_loc0':np.eye(n_covariates),
                 'beta_loc1':np.eye(n_covariates),
