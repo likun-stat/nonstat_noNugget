@@ -175,7 +175,7 @@ if __name__ == "__main__":
        # radius_knots_trace[0,:] = radius_from_knots
        range_knots_trace = np.empty((n_updates_thinned, n_phi_range_knots)); range_knots_trace[:] = np.nan
        range_knots_trace[0,:] = range_at_knots
-       phi_knots_radius_trace = np.empty((n_updates_thinned, n_phi_range_knots+4)); phi_knots_radius_trace[:] = np.nan
+       phi_knots_radius_trace = np.empty((n_updates_thinned, n_phi_range_knots+1)); phi_knots_radius_trace[:] = np.nan
        phi_knots_radius_trace[0,:] = phi_at_knots_and_radius
        beta_gev_params_trace = np.empty((n_updates_thinned, n_beta_gev_params)); beta_gev_params_trace[:] = np.nan
        beta_gev_params_trace[0,:] = beta_gev_params
