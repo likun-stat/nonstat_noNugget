@@ -112,7 +112,7 @@ if __name__ == "__main__":
    beta_gev_params = np.array([beta_loc0[0], beta_scale[0], beta_shape[0]])
    n_beta_gev_params = beta_gev_params.shape[0]
    
-   phi_at_knots_and_radius = np.concatenate((phi_at_knots, radius_from_knots[0]), axis = None)
+   phi_at_knots_and_radius = np.concatenate((phi_at_knots, radius_from_knots[0], beta_gev_params), axis = None)
    
    # Bookkeeping
    n_s = Y.shape[0]
@@ -175,7 +175,7 @@ if __name__ == "__main__":
        # radius_knots_trace[0,:] = radius_from_knots
        range_knots_trace = np.empty((n_updates_thinned, n_phi_range_knots)); range_knots_trace[:] = np.nan
        range_knots_trace[0,:] = range_at_knots
-       phi_knots_radius_trace = np.empty((n_updates_thinned, n_phi_range_knots+1)); phi_knots_radius_trace[:] = np.nan
+       phi_knots_radius_trace = np.empty((n_updates_thinned, n_phi_range_knots+4)); phi_knots_radius_trace[:] = np.nan
        phi_knots_radius_trace[0,:] = phi_at_knots_and_radius
        beta_gev_params_trace = np.empty((n_updates_thinned, n_beta_gev_params)); beta_gev_params_trace[:] = np.nan
        beta_gev_params_trace[0,:] = beta_gev_params
@@ -185,7 +185,7 @@ if __name__ == "__main__":
    if rank == 0:
        # radius_knots_within_thinning = np.empty((n_Rt_knots,thinning)); radius_knots_within_thinning[:] = np.nan
        range_knots_within_thinning = np.empty((n_phi_range_knots,thinning)); range_knots_within_thinning[:] = np.nan
-       phi_knots_radius_within_thinning = np.empty((n_phi_range_knots+1,thinning)); phi_knots_radius_within_thinning[:] = np.nan
+       phi_knots_radius_within_thinning = np.empty((n_phi_range_knots+4,thinning)); phi_knots_radius_within_thinning[:] = np.nan
        beta_gev_params_within_thinning = np.empty((n_beta_gev_params,thinning)); beta_gev_params_within_thinning[:] = np.nan
    
    
@@ -303,21 +303,24 @@ if __name__ == "__main__":
            
            
        accept = 0
-       # --------- Update radius + phi_at_knots -----------
+       # --------- Update radius + phi_at_knots + GEV -----------
        #Propose new values
        phi_vec_star = np.empty(n_s)
        radius_proposal = np.empty(1)
+       beta_gev_params_star = np.empty(beta_gev_params.shape)
        R_weights_star = np.empty((n_s,Knots.shape[0]))
        gamma_vec_star = np.repeat(np.nan, n_s)
        Xt_star = np.empty(n_s)
        if rank==0:
            tmp_upper = cholesky(prop_Sigma['phi_radius'],lower=False)
-           tmp_params_star = sigma_m['phi_radius']*random_generator.standard_normal(n_phi_range_knots+1)
+           tmp_params_star = sigma_m['phi_radius']*random_generator.standard_normal(n_phi_range_knots+4)
            phi_at_knots_and_radius_proposal = phi_at_knots_and_radius + np.matmul(tmp_upper.T , tmp_params_star)
            phi_vec_star[:] = phi_range_weights @ phi_at_knots_and_radius_proposal[:n_phi_range_knots]
-           radius_proposal = phi_at_knots_and_radius_proposal[-1]
+           radius_proposal = phi_at_knots_and_radius_proposal[n_phi_range_knots]
+           beta_gev_params_star[:] = phi_at_knots_and_radius_proposal[(n_phi_range_knots+1):]
        phi_vec_star = comm.bcast(phi_vec_star,root=0)
        radius_proposal = comm.bcast(radius_proposal,root=0)
+       beta_gev_params_star = comm.bcast(beta_gev_params_star, root=0)
        
        # Not broadcasting but generating at each node
        for idy in np.arange(n_s):
@@ -326,16 +329,25 @@ if __name__ == "__main__":
            R_weights_star[idy,:] = tmp_weights
            gamma_vec_star[idy] = np.sum(np.sqrt(tmp_weights[np.nonzero(tmp_weights)]*gamma))**2 #only save once
 
-           
+       loc0_star = Design_mat @np.array([beta_gev_params_star[0],0])
+       scale_star = Design_mat @np.array([beta_gev_params_star[1],0])
+       shape_star = Design_mat @np.array([beta_gev_params_star[2],0])
+       Loc_star = np.tile(loc0_star, n_t) + np.tile(loc1, n_t)*np.repeat(Time,n_s)
+       Loc_star = Loc_star.reshape((n_s,n_t),order='F')
+       Scale_star = np.tile(scale_star, n_t)
+       Scale_star = Scale_star.reshape((n_s,n_t),order='F')
+       Shape_star = np.tile(shape_star, n_t)
+       Shape_star = Shape_star.reshape((n_s,n_t),order='F')    
+      
        # Evaluate likelihood at new values
        if np.any(phi_vec_star>=1) or np.any(phi_vec_star<=0) or radius_proposal<0 or radius_proposal>10: #U(0,1) priors
            Star_lik = -np.inf
        else:
            Rt_s_star[:] = R_weights_star @ Rt_at_knots
            Xt_star[:] = utils.gev_2_RW(Y[:,rank], phi_vec_star, gamma_vec_star,
-                                         Loc[:,rank], Scale[:,rank], Shape[:,rank])
-           Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt_star, Loc[:,rank], Scale[:,rank],
-                                                 Shape[:,rank], phi_vec_star, gamma_vec_star, Rt_s_star,
+                                         Loc_star[:,rank], Scale_star[:,rank], Shape_star[:,rank])
+           Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt_star, Loc_star[:,rank], Scale_star[:,rank],
+                                                 Shape_star[:,rank], phi_vec_star, gamma_vec_star, Rt_s_star,
                                                  cholesky_U)
        Star_Lik_recv = comm.gather(Star_lik,root=0)
        
@@ -349,6 +361,7 @@ if __name__ == "__main__":
            if random_generator.uniform(0,1,1)<r:
                phi_at_knots_and_radius[:] = phi_at_knots_and_radius_proposal
                phi_vec[:] = phi_vec_star
+               beta_gev_params[:] = beta_gev_params_star
                Current_Lik_recv[:] = Star_Lik_recv
                phi_radius_accept = phi_radius_accept + 1
                accept = 1
@@ -362,67 +375,16 @@ if __name__ == "__main__":
            R_weights[:] = R_weights_star
            gamma_vec[:] = gamma_vec_star
            Rt_s[:] = Rt_s_star
-           Current_lik = Star_lik
-         
-           
-       accept = 0
-       # --------- Update GEV params -----------
-       #Propose new values
-       beta_gev_params_star = np.empty(beta_gev_params.shape)
-       if rank==0:
-           tmp_upper = cholesky(prop_Sigma['gev_params'],lower=False)
-           tmp_params_star = sigma_m['gev_params']*random_generator.standard_normal(n_beta_gev_params)
-           beta_gev_params_star[:] = beta_gev_params + np.matmul(tmp_upper.T , tmp_params_star)
-           
-       beta_gev_params_star = comm.bcast(beta_gev_params_star,root=0)
-       
-       # Evaluate likelihood at new values
-       # Not broadcasting but generating at each node
-       loc0_star = Design_mat @np.array([beta_gev_params_star[0],0])
-       scale_star = Design_mat @np.array([beta_gev_params_star[1],0])
-       shape_star = Design_mat @np.array([beta_gev_params_star[2],0])
-       Loc_star = np.tile(loc0_star, n_t) + np.tile(loc1, n_t)*np.repeat(Time,n_s)
-       Loc_star = Loc_star.reshape((n_s,n_t),order='F')
-       Scale_star = np.tile(scale_star, n_t)
-       Scale_star = Scale_star.reshape((n_s,n_t),order='F')
-       Shape_star = np.tile(shape_star, n_t)
-       Shape_star = Shape_star.reshape((n_s,n_t),order='F')
-       
-       Xt_star[:] = utils.gev_2_RW(Y[:,rank], phi_vec, gamma_vec, 
-                                         Loc_star[:,rank], Scale_star[:,rank], Shape_star[:,rank])
-           
-       Star_lik = utils.marg_transform_data_mixture_likelihood_1t(Y[:,rank], Xt_star, Loc_star[:,rank], Scale_star[:,rank], 
-                                                 Shape_star[:,rank], phi_vec, gamma_vec, Rt_s, 
-                                                 cholesky_U)
-       Star_Lik_recv = comm.gather(Star_lik,root=0)
-       
-       # Determine update or not
-       if rank==0:
-           log_num = np.sum(Star_Lik_recv)
-           log_denom = np.sum(Current_Lik_recv)
-           r = np.exp(log_num - log_denom)
-           if ~np.isfinite(r):
-               r = 0
-           if random_generator.uniform(0,1,1)<r:
-               beta_gev_params[:] = beta_gev_params_star
-               Current_Lik_recv[:] = Star_Lik_recv
-               accept = 1  
-               beta_gev_accept = beta_gev_accept + 1
-           beta_gev_params_within_thinning[:, index_within] = beta_gev_params
-       
-       # Broadcast anyways
-       accept = comm.bcast(accept,root=0)
-       if accept==1:
            loc0[:] = loc0_star
            scale[:] = scale_star
            shape[:] = shape_star
            Loc[:] = Loc_star
            Scale[:] = Scale_star
            Shape[:] = Shape_star
-           Xt[:] = Xt_star
            Current_lik = Star_lik
-       # time_spent = time.time()-start_time
-       # print(rank, time_spent)  
+         
+           
+      
    
        # ----------------------------------------------------------------------------------------
        # --------------------------- Summarize every 'thinning' steps ---------------------------
@@ -435,8 +397,8 @@ if __name__ == "__main__":
            if rank == 0:
                # radius_knots_trace[index,:] = radius_from_knots
                range_knots_trace[index,:] = range_at_knots
-               phi_knots_radius_trace[index,:] = phi_at_knots_and_radius
-               beta_gev_params_trace[index,:] = beta_gev_params
+               phi_knots_radius_trace[index,:] = phi_at_knots_and_radius[:(n_phi_range_knots+1)]
+               beta_gev_params_trace[index,:] = phi_at_knots_and_radius[(n_phi_range_knots+1):]
            
            # Adapt via Shaby and Wells (2010)
            gamma1 = 1 / (index + offset)**(c_1)
@@ -488,20 +450,7 @@ if __name__ == "__main__":
                        print(prop_Sigma['phi_radius'])
                
                     
-               sigma_m['gev_params'] = np.exp(np.log(sigma_m['gev_params']) + gamma2*(beta_gev_accept/thinning - r_opt_2d))
-               beta_gev_accept = 0
-               prop_Sigma['gev_params'] = prop_Sigma['gev_params'] + gamma1*(np.cov(beta_gev_params_within_thinning) - prop_Sigma['gev_params'])
-               check_chol_cont = True
-               while check_chol_cont:
-                   try:
-                       # Initialize prop_C
-                       np.linalg.cholesky(prop_Sigma['gev_params'])
-                       check_chol_cont = False
-                   except  np.linalg.LinAlgError:
-                       prop_Sigma['gev_params'] = prop_Sigma['gev_params'] + eps*np.eye(n_beta_gev_params)
-                       print("Oops. Proposal covariance matrix is now:\n")
-                       print(prop_Sigma['gev_params'])
-        
+               
         
         
         
